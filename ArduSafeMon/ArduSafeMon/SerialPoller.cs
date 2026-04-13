@@ -64,13 +64,23 @@ namespace ASCOM.ArduSafeMon
         /// <summary>Arrête le thread et ferme le port série.</summary>
         public void Stop()
         {
+            // 1. Signaler l'annulation
             _cts?.Cancel();
-            _pollThread?.Join(2000);
 
-            if (_serialPort != null && _serialPort.IsOpen)
-                _serialPort.Close();
+            // 2. Fermer le port AVANT le Join pour débloquer immédiatement
+            //    tout ReadTo/Write en attente dans le thread
+            try
+            {
+                if (_serialPort != null && _serialPort.IsOpen)
+                    _serialPort.Close();
+            }
+            catch { }
 
-            _serialPort?.Dispose();
+            // 3. Attendre la fin du thread (il sortira rapidement car le port est fermé)
+            try { _pollThread?.Join(3000); } catch { }
+
+            // 4. Libérer les ressources
+            try { _serialPort?.Dispose(); } catch { }
             _serialPort = null;
             _logger?.LogMessage("SerialPoller", "Stopped");
         }
@@ -81,24 +91,34 @@ namespace ASCOM.ArduSafeMon
 
         private void PollLoop(CancellationToken token)
         {
-            while (!token.IsCancellationRequested)
+            // Enveloppe externe : aucune exception ne peut sortir du thread
+            // Une exception non rattrapée dans un thread background crash le processus hôte (NINA)
+            try
             {
-                try
+                while (!token.IsCancellationRequested)
                 {
-                    PollOnce();
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogMessage("SerialPoller", $"Error: {ex.Message} → unsafe");
-                    lock (_lock) { _isSafe = false; }
+                    try
+                    {
+                        PollOnce();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Si le token est annulé, c'est un arrêt normal — on sort
+                        if (token.IsCancellationRequested) return;
 
-                    WaitOrCancel(5000, token);
-                    TryReconnect(token);
-                    continue;
-                }
+                        _logger?.LogMessage("SerialPoller", $"Error: {ex.Message} → unsafe");
+                        lock (_lock) { _isSafe = false; }
 
-                WaitOrCancel(_pollIntervalMs, token);
+                        WaitOrCancel(5000, token);
+                        if (token.IsCancellationRequested) return;
+                        TryReconnect(token);
+                        continue;
+                    }
+
+                    WaitOrCancel(_pollIntervalMs, token);
+                }
             }
+            catch { /* Sécurité finale : absorber toute exception pour ne jamais crasher NINA */ }
         }
 
         private void PollOnce()
