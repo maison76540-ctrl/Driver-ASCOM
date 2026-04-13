@@ -41,8 +41,9 @@ namespace ASCOM.ArduSafeMon
         {
             _serialPort = new SerialPort(_portName, 9600)
             {
-                ReadTimeout = 1000,
-                WriteTimeout = 1000
+                ReadTimeout  = 1000,
+                WriteTimeout = 1000,
+                NewLine      = "#"   // protocole Arduino : délimiteur '#'
             };
             _serialPort.Open();
 
@@ -121,8 +122,9 @@ namespace ASCOM.ArduSafeMon
                     _serialPort?.Dispose();
                     _serialPort = new SerialPort(_portName, 9600)
                     {
-                        ReadTimeout = 1000,
-                        WriteTimeout = 1000
+                        ReadTimeout  = 1000,
+                        WriteTimeout = 1000,
+                        NewLine      = "#"   // protocole Arduino : délimiteur '#'
                     };
                     _serialPort.Open();
                     Thread.Sleep(500);
