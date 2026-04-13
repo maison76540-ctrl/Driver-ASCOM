@@ -38,9 +38,14 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="ASCOM.DeviceInterfaces">
       <HintPath>$(ProgramFiles(x86))\ASCOM\Platform 6 Developer Components\Components\Platform6\ASCOM.DeviceInterfaces.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ASCOM.Exceptions">
+      <HintPath>$(ProgramFiles(x86))\ASCOM\Platform 6 Developer Components\Components\Platform6\ASCOM.Exceptions.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ASCOM.Utilities">
