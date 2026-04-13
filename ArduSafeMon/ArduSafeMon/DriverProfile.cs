@@ -31,16 +31,17 @@ namespace ASCOM.ArduSafeMon
             using (var profile = new Profile())
             {
                 profile.DeviceType = "SafetyMonitor";
+
                 ComPort = profile.GetValue(DriverId, ComPortKey, string.Empty, ComPortDefault);
-                PollIntervalMs = int.Parse(
-                    profile.GetValue(DriverId, PollIntervalKey, string.Empty,
-                        PollIntervalDefault.ToString()));
-                SimulationMode = bool.Parse(
-                    profile.GetValue(DriverId, SimulationModeKey, string.Empty,
-                        SimulationModeDefault.ToString()));
-                SimulatedSafe = bool.Parse(
-                    profile.GetValue(DriverId, SimulatedSafeKey, string.Empty,
-                        SimulatedSafeDefault.ToString()));
+
+                string pollStr = profile.GetValue(DriverId, PollIntervalKey, string.Empty, PollIntervalDefault.ToString());
+                PollIntervalMs = int.TryParse(pollStr, out int poll) ? Math.Max(500, poll) : PollIntervalDefault;
+
+                string simModeStr = profile.GetValue(DriverId, SimulationModeKey, string.Empty, SimulationModeDefault.ToString());
+                SimulationMode = bool.TryParse(simModeStr, out bool simMode) ? simMode : SimulationModeDefault;
+
+                string simSafeStr = profile.GetValue(DriverId, SimulatedSafeKey, string.Empty, SimulatedSafeDefault.ToString());
+                SimulatedSafe = bool.TryParse(simSafeStr, out bool simSafe) ? simSafe : SimulatedSafeDefault;
             }
         }
 
