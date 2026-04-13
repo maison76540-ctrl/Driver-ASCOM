@@ -90,16 +90,16 @@ namespace ASCOM.ArduSafeMon
         public ArrayList SupportedActions => new ArrayList();
 
         public string Action(string ActionName, string ActionParameters)
-            => throw new ActionNotImplementedException("Action " + ActionName);
+            => throw new ASCOM.ActionNotImplementedException("Action " + ActionName);
 
         public void CommandBlind(string Command, bool Raw = false)
-            => throw new MethodNotImplementedException("CommandBlind");
+            => throw new ASCOM.MethodNotImplementedException("CommandBlind");
 
         public bool CommandBool(string Command, bool Raw = false)
-            => throw new MethodNotImplementedException("CommandBool");
+            => throw new ASCOM.MethodNotImplementedException("CommandBool");
 
         public string CommandString(string Command, bool Raw = false)
-            => throw new MethodNotImplementedException("CommandString");
+            => throw new ASCOM.MethodNotImplementedException("CommandString");
 
         public void SetupDialog()
         {
