@@ -40,11 +40,11 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="ASCOM.DeviceInterfaces">
-      <HintPath>$(ProgramFiles(x86))\ASCOM\Developer\Components\Platform\ASCOM.DeviceInterfaces.dll</HintPath>
+      <HintPath>$(ProgramFiles(x86))\ASCOM\Platform 6 Developer Components\Components\Platform6\ASCOM.DeviceInterfaces.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="ASCOM.Utilities">
-      <HintPath>$(ProgramFiles(x86))\ASCOM\Developer\Components\Platform\ASCOM.Utilities.dll</HintPath>
+      <HintPath>$(ProgramFiles(x86))\ASCOM\Platform 6 Developer Components\Components\Platform6\ASCOM.Utilities.dll</HintPath>
       <Private>False</Private>
     </Reference>
   </ItemGroup>
