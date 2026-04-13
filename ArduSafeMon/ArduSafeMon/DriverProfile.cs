@@ -7,7 +7,7 @@ namespace ASCOM.ArduSafeMon
     /// Gère la lecture et l'écriture des paramètres du driver
     /// dans le registre ASCOM (ASCOM.Utilities.Profile).
     /// </summary>
-    internal class DriverProfile
+    public class DriverProfile
     {
         private const string DriverId = "ASCOM.ArduSafeMon.SafetyMonitor";
         private const string ComPortKey = "ComPort";
