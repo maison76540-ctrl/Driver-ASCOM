@@ -1,0 +1,14 @@
+# Installeurs binaires
+*.exe
+*.driver
+
+# Fichiers système Windows
+Thumbs.db
+desktop.ini
+
+# Visual Studio
+*.user
+*.suo
+.vs/
+bin/
+obj/
