@@ -66,18 +66,27 @@ namespace ASCOM.ArduSafeMon
         {
             get
             {
+                // Retourner false (unsafe) si non connecté — ne jamais lever d'exception
+                // NINA peut appeler IsSafe sur un timer en parallèle pendant la déconnexion
                 if (!_connected)
-                    throw new InvalidOperationException("Driver non connecté.");
+                    return false;
 
-                bool simMode = _testMode ? _testSimulationMode : _profile.SimulationMode;
-                if (simMode)
+                try
                 {
-                    bool simSafe = _testMode ? _testSimulatedSafe : _profile.SimulatedSafe;
-                    _logger?.LogMessage("IsSafe", $"[SIMULATION] → {simSafe}");
-                    return simSafe;
-                }
+                    bool simMode = _testMode ? _testSimulationMode : _profile.SimulationMode;
+                    if (simMode)
+                    {
+                        bool simSafe = _testMode ? _testSimulatedSafe : _profile.SimulatedSafe;
+                        _logger?.LogMessage("IsSafe", $"[SIMULATION] → {simSafe}");
+                        return simSafe;
+                    }
 
-                return _poller?.IsSafe ?? false;
+                    return _poller?.IsSafe ?? false;
+                }
+                catch
+                {
+                    return false;
+                }
             }
         }
 
