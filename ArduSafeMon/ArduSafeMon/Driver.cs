@@ -13,7 +13,6 @@ namespace ASCOM.ArduSafeMon
     [ComVisible(true)]
     [Guid("0EA229E6-6F0C-4B9D-BAAC-A4447204D708")]
     [ProgId("ASCOM.ArduSafeMon.SafetyMonitor")]
-    [ServedClassName("ArduSafeMon Safety Monitor")]
     [ClassInterface(ClassInterfaceType.None)]
     public class SafetyMonitor : ISafetyMonitor, IDisposable
     {
