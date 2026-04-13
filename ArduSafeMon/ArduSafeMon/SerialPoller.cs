@@ -8,49 +8,32 @@ namespace ASCOM.ArduSafeMon
 {
     /// <summary>
     /// Interroge l'Arduino toutes les N millisecondes via le port série.
-    /// Maintient un état en cache thread-safe.
+    /// Le thread est seul propriétaire du SerialPort — il l'ouvre ET le ferme lui-même.
+    /// Stop() se contente d'annuler le token, sans toucher au port.
     /// </summary>
     internal class SerialPoller : ISerialPoller
     {
         private readonly string _portName;
         private readonly int _pollIntervalMs;
-        private readonly TraceLogger _logger;
 
-        private SerialPort _serialPort;
         private Thread _pollThread;
         private CancellationTokenSource _cts;
 
-        private bool _isSafe = false;
-        private readonly object _lock = new object();
+        private volatile bool _isSafe = false;
 
         public SerialPoller(string portName, int pollIntervalMs, TraceLogger logger)
         {
             _portName = portName;
             _pollIntervalMs = pollIntervalMs;
-            _logger = logger;
+            // TraceLogger non utilisé — objet COM dangereux depuis un thread background
         }
 
-        /// <summary>Dernier état connu (thread-safe).</summary>
-        public bool IsSafe
-        {
-            get { lock (_lock) { return _isSafe; } }
-        }
+        /// <summary>Dernier état connu (thread-safe via volatile).</summary>
+        public bool IsSafe => _isSafe;
 
-        /// <summary>Ouvre le port série et démarre le thread de polling.</summary>
+        /// <summary>Démarre le thread de polling — le thread ouvre lui-même le port.</summary>
         public void Start()
         {
-            _serialPort = new SerialPort(_portName, 9600)
-            {
-                ReadTimeout  = 1000,
-                WriteTimeout = 1000,
-                NewLine      = "#"   // protocole Arduino : délimiteur '#'
-            };
-            _serialPort.Open();
-
-            // Vider le buffer de démarrage de l'Arduino (reset USB)
-            Thread.Sleep(500);
-            _serialPort.DiscardInBuffer();
-
             _cts = new CancellationTokenSource();
             _pollThread = new Thread(() => PollLoop(_cts.Token))
             {
@@ -58,22 +41,16 @@ namespace ASCOM.ArduSafeMon
                 Name = "ArduSafeMon.Poller"
             };
             _pollThread.Start();
-            _logger?.LogMessage("SerialPoller", $"Started on {_portName}, interval={_pollIntervalMs}ms");
         }
 
-        /// <summary>Arrête le thread et ferme le port série — non bloquant.</summary>
+        /// <summary>
+        /// Annule le token — le thread sortira de lui-même au prochain timeout (max 1s)
+        /// et fermera le port dans son finally. Stop() ne bloque jamais NINA.
+        /// </summary>
         public void Stop()
         {
-            // Annuler le token
             try { _cts?.Cancel(); } catch { }
-
-            // Fermer et libérer le port immédiatement
-            // Cela débloque tout ReadTo/Write en attente dans le thread
-            // On ne fait pas de Join() — le thread background mourra tout seul
-            var port = _serialPort;
-            _serialPort = null;
-            try { port?.Close(); } catch { }
-            try { port?.Dispose(); } catch { }
+            // NE PAS toucher au SerialPort ici — le thread le ferme dans son finally
         }
 
         public void Dispose() => Stop();
@@ -82,91 +59,91 @@ namespace ASCOM.ArduSafeMon
 
         private void PollLoop(CancellationToken token)
         {
-            // Enveloppe externe : aucune exception ne peut sortir du thread
-            // Une exception non rattrapée dans un thread background crash le processus hôte (NINA)
+            SerialPort port = null;
             try
             {
+                // Le thread ouvre son propre port
+                port = new SerialPort(_portName, 9600)
+                {
+                    ReadTimeout  = 1000,
+                    WriteTimeout = 1000
+                };
+                port.Open();
+                Thread.Sleep(500);
+                port.DiscardInBuffer();
+
                 while (!token.IsCancellationRequested)
                 {
                     try
                     {
-                        PollOnce();
+                        port.Write("S#");
+                        string response = port.ReadTo("#");
+                        _isSafe = ParseResponse(response);
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        // Si le token est annulé, c'est un arrêt normal — on sort
-                        if (token.IsCancellationRequested) return;
+                        _isSafe = false;
+                        if (token.IsCancellationRequested) break;
 
-                        _logger?.LogMessage("SerialPoller", $"Error: {ex.Message} → unsafe");
-                        lock (_lock) { _isSafe = false; }
-
+                        // Attendre puis retenter de rouvrir le port
                         WaitOrCancel(5000, token);
-                        if (token.IsCancellationRequested) return;
-                        TryReconnect(token);
+                        if (token.IsCancellationRequested) break;
+
+                        port = TryReopen(port, token);
+                        if (port == null) break;
                         continue;
                     }
 
                     WaitOrCancel(_pollIntervalMs, token);
                 }
             }
-            catch { /* Sécurité finale : absorber toute exception pour ne jamais crasher NINA */ }
+            catch { /* Sécurité absolue : rien ne peut crasher NINA */ }
+            finally
+            {
+                // Le thread ferme toujours son propre port — jamais depuis Stop()
+                _isSafe = false;
+                try { port?.Close(); } catch { }
+                try { port?.Dispose(); } catch { }
+            }
         }
 
-        private void PollOnce()
+        private SerialPort TryReopen(SerialPort oldPort, CancellationToken token)
         {
-            _serialPort.Write("S#");
-            string response = _serialPort.ReadTo("#");
-            bool newState = ParseResponse(response);
-            lock (_lock) { _isSafe = newState; }
-            // Pas de TraceLogger ici — objet COM, dangereux depuis un thread background
-        }
+            try { oldPort?.Close(); } catch { }
+            try { oldPort?.Dispose(); } catch { }
 
-        private void TryReconnect(CancellationToken token)
-        {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    var old = _serialPort;
-                    _serialPort = null;
-                    try { old?.Close(); } catch { }
-                    try { old?.Dispose(); } catch { }
-
-                    _serialPort = new SerialPort(_portName, 9600)
+                    var p = new SerialPort(_portName, 9600)
                     {
                         ReadTimeout  = 1000,
-                        WriteTimeout = 1000,
-                        NewLine      = "#"
+                        WriteTimeout = 1000
                     };
-                    _serialPort.Open();
+                    p.Open();
                     Thread.Sleep(500);
-                    _serialPort.DiscardInBuffer();
-                    return;
+                    p.DiscardInBuffer();
+                    return p;
                 }
                 catch
                 {
                     WaitOrCancel(5000, token);
                 }
             }
+            return null;
         }
 
         private static void WaitOrCancel(int ms, CancellationToken token)
         {
             try { Task.Delay(ms, token).Wait(); }
-            catch { /* token annulé : normal */ }
+            catch { }
         }
 
-        // ── Méthode de parsing : interne + testable ──────────────────────
-
-        /// <summary>
-        /// Interprète la réponse de l'Arduino (sans le '#' final).
-        /// "safe" → true, tout autre valeur → false.
-        /// </summary>
+        /// <summary>"safe" → true, tout autre valeur → false.</summary>
         internal static bool ParseResponse(string response)
         {
-            if (string.IsNullOrEmpty(response))
-                return false;
-
+            if (string.IsNullOrEmpty(response)) return false;
             return string.Equals(response.Trim(), "safe", StringComparison.OrdinalIgnoreCase);
         }
     }
