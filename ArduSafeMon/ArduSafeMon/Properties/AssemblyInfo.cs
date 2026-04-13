@@ -11,3 +11,7 @@ using System.Runtime.InteropServices;
 [assembly: Guid("0EA229E6-6F0C-4B9D-BAAC-A4447204D708")]
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
+
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("ArduSafeMon.Tests")]
