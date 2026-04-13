@@ -116,8 +116,8 @@ namespace ASCOM.ArduSafeMon
 
         public void Dispose()
         {
-            Disconnect();
-            _logger?.Dispose();
+            try { Disconnect(); } catch { }
+            try { _logger?.Dispose(); } catch { }
         }
 
         // ── Connexion / Déconnexion ──────────────────────────────────────
@@ -145,10 +145,23 @@ namespace ASCOM.ArduSafeMon
         {
             if (!_connected) return;
 
-            _poller?.Stop();
-            _poller?.Dispose();
-            _poller = null;
+            // Marquer déconnecté en premier pour éviter tout appel IsSafe pendant l'arrêt
             _connected = false;
+
+            try
+            {
+                _poller?.Stop();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogMessage("Disconnect", $"Error stopping poller: {ex.Message}");
+            }
+            finally
+            {
+                try { _poller?.Dispose(); } catch { }
+                _poller = null;
+            }
+
             _logger?.LogMessage("Disconnect", "Disconnected");
         }
 
