@@ -61,28 +61,19 @@ namespace ASCOM.ArduSafeMon
             _logger?.LogMessage("SerialPoller", $"Started on {_portName}, interval={_pollIntervalMs}ms");
         }
 
-        /// <summary>Arrête le thread et ferme le port série.</summary>
+        /// <summary>Arrête le thread et ferme le port série — non bloquant.</summary>
         public void Stop()
         {
-            // 1. Signaler l'annulation
-            _cts?.Cancel();
+            // Annuler le token
+            try { _cts?.Cancel(); } catch { }
 
-            // 2. Fermer le port AVANT le Join pour débloquer immédiatement
-            //    tout ReadTo/Write en attente dans le thread
-            try
-            {
-                if (_serialPort != null && _serialPort.IsOpen)
-                    _serialPort.Close();
-            }
-            catch { }
-
-            // 3. Attendre la fin du thread (il sortira rapidement car le port est fermé)
-            try { _pollThread?.Join(3000); } catch { }
-
-            // 4. Libérer les ressources
-            try { _serialPort?.Dispose(); } catch { }
+            // Fermer et libérer le port immédiatement
+            // Cela débloque tout ReadTo/Write en attente dans le thread
+            // On ne fait pas de Join() — le thread background mourra tout seul
+            var port = _serialPort;
             _serialPort = null;
-            _logger?.LogMessage("SerialPoller", "Stopped");
+            try { port?.Close(); } catch { }
+            try { port?.Dispose(); } catch { }
         }
 
         public void Dispose() => Stop();
@@ -127,7 +118,7 @@ namespace ASCOM.ArduSafeMon
             string response = _serialPort.ReadTo("#");
             bool newState = ParseResponse(response);
             lock (_lock) { _isSafe = newState; }
-            _logger?.LogMessage("SerialPoller", $"Response: '{response}' → IsSafe={newState}");
+            // Pas de TraceLogger ici — objet COM, dangereux depuis un thread background
         }
 
         private void TryReconnect(CancellationToken token)
@@ -136,25 +127,24 @@ namespace ASCOM.ArduSafeMon
             {
                 try
                 {
-                    if (_serialPort != null && _serialPort.IsOpen)
-                        _serialPort.Close();
+                    var old = _serialPort;
+                    _serialPort = null;
+                    try { old?.Close(); } catch { }
+                    try { old?.Dispose(); } catch { }
 
-                    _serialPort?.Dispose();
                     _serialPort = new SerialPort(_portName, 9600)
                     {
                         ReadTimeout  = 1000,
                         WriteTimeout = 1000,
-                        NewLine      = "#"   // protocole Arduino : délimiteur '#'
+                        NewLine      = "#"
                     };
                     _serialPort.Open();
                     Thread.Sleep(500);
                     _serialPort.DiscardInBuffer();
-                    _logger?.LogMessage("SerialPoller", "Reconnected successfully");
                     return;
                 }
                 catch
                 {
-                    _logger?.LogMessage("SerialPoller", "Reconnect failed, retrying in 5s...");
                     WaitOrCancel(5000, token);
                 }
             }

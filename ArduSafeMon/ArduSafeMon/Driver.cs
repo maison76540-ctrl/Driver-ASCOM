@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using ASCOM;
 using ASCOM.DeviceInterface;
 using ASCOM.Utilities;
@@ -155,24 +154,13 @@ namespace ASCOM.ArduSafeMon
         {
             if (!_connected) return;
 
-            // Marquer déconnecté IMMÉDIATEMENT — NINA peut continuer sans bloquer
+            // Marquer déconnecté immédiatement
             _connected = false;
 
-            // Capturer le poller et le nettoyer en arrière-plan
-            // pour ne jamais bloquer le thread COM de NINA
+            // Stop() est maintenant non-bloquant (pas de Join)
             var pollerToStop = _poller;
             _poller = null;
-
-            if (pollerToStop != null)
-            {
-                Task.Run(() =>
-                {
-                    try { pollerToStop.Stop(); } catch { }
-                    try { pollerToStop.Dispose(); } catch { }
-                });
-            }
-
-            _logger?.LogMessage("Disconnect", "Disconnected");
+            try { pollerToStop?.Stop(); } catch { }
         }
 
         // ── Enregistrement COM (ASCOM) ────────────────────────────────────
