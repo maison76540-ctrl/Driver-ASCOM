@@ -135,13 +135,47 @@ ArduSafeMon/
 ### Paramètres configurables (SetupDialogForm)
 - **Port COM** : liste déroulante des ports disponibles sur le système
 - **Intervalle de polling** : 2000 ms par défaut (modifiable 500–10000 ms)
+- **Mode simulation** : case à cocher pour activer la simulation (désactive le port série)
+- **État simulé** : bouton radio `Safe` / `Unsafe` (visible uniquement si mode simulation activé)
 - Stockage : registre Windows via `ASCOM.Utilities.Profile` (standard ASCOM)
 
 ---
 
-## Composant 3 — Thread de polling & gestion d'état
+## Composant 3 — Mode simulation
 
-### Flux de données
+### Principe
+Quand le mode simulation est activé, le driver **ne tente jamais d'ouvrir le port série**. Il retourne directement un état fixe défini dans la configuration.
+
+### Comportement
+
+| Paramètre | Valeur | `IsSafe` retourné |
+|---|---|---|
+| Simulation activée + état = Safe | — | `true` |
+| Simulation activée + état = Unsafe | — | `false` |
+| Simulation désactivée | polling Arduino | valeur lue sur pin 8 |
+
+### Impact sur `Connected`
+- En mode simulation, `Connected = true` réussit **toujours** (pas de port série à ouvrir)
+- Le thread de polling **n'est pas démarré**
+- `IsSafe` lit directement `_simulatedSafe` depuis la config
+
+### Interface utilisateur (SetupDialogForm)
+
+```
+┌─────────────────────────────────────────┐
+│  Port COM :  [COM3 ▼]                   │
+│  Intervalle : [2000] ms                 │
+│                                         │
+│  ☐ Mode simulation                      │
+│     ● Safe   ○ Unsafe    (grisé si off) │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Composant 4 — Thread de polling & gestion d'état
+
+### Flux de données (mode normal uniquement)
 
 ```
 Thread principal (NINA)          Thread de polling (arrière-plan)
@@ -193,8 +227,15 @@ lock (_lock) { return _isSafe; }
 
 ## Tests à effectuer
 
+**Mode normal (Arduino connecté) :**
 1. **Test de base** : Connexion → lecture `IsSafe` → vérifier cohérence avec position physique du toit
 2. **Test de stabilité** : Laisser tourner 10 minutes → pas d'oscillations erratiques
 3. **Test de fréquence** : Forcer des appels `IsSafe` rapides (10/s) → état stable
 4. **Test de déconnexion** : Débrancher l'Arduino → driver passe en `unsafe`, reconnecte automatiquement
 5. **Test NINA** : Intégration complète dans NINA Safety Monitor → état affiché stable
+
+**Mode simulation :**
+6. **Test Safe simulé** : Activer simulation + état Safe → `IsSafe` retourne `true` dans NINA
+7. **Test Unsafe simulé** : Activer simulation + état Unsafe → `IsSafe` retourne `false` dans NINA
+8. **Test sans Arduino** : Mode simulation activé, aucun Arduino branché → connexion réussit, état correct
+9. **Test bascule** : Changer l'état simulé dans Setup → valeur mise à jour dès la reconnexion
