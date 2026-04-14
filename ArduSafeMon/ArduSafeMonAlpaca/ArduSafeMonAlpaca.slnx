@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ArduSafeMonAlpaca.Tests/ArduSafeMonAlpaca.Tests.csproj" />
+  <Project Path="ArduSafeMonAlpaca/ArduSafeMonAlpaca.csproj" />
+</Solution>
