@@ -1,3 +1,6 @@
+using System.IO.Ports;
+using System.Text;
+using System.Text.Json;
 using ArduSafeMonAlpaca;
 
 // ── Configuration ────────────────────────────────────────────────────────────
@@ -14,6 +17,110 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{settings.AlpacaPort}");
 
 var app = builder.Build();
 
+// ── Page de configuration ─────────────────────────────────────────────────────
+
+app.MapGet("/setup", (AppSettings s) =>
+{
+    string[] ports;
+    try { ports = SerialPort.GetPortNames(); }
+    catch { ports = Array.Empty<string>(); }
+
+    var sb = new StringBuilder();
+    sb.AppendLine("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'>");
+    sb.AppendLine("<title>ArduSafeMon - Configuration</title>");
+    sb.AppendLine("<style>");
+    sb.AppendLine("body{font-family:Arial,sans-serif;max-width:480px;margin:40px auto;padding:0 20px;background:#1a1a2e;color:#eee}");
+    sb.AppendLine("h1{color:#e94560}");
+    sb.AppendLine("label{display:block;margin-top:16px;font-weight:bold}");
+    sb.AppendLine("select,input{width:100%;padding:8px;margin-top:4px;border-radius:4px;border:1px solid #444;background:#16213e;color:#eee;font-size:1em}");
+    sb.AppendLine(".row{display:flex;align-items:center;gap:10px;margin-top:16px}");
+    sb.AppendLine(".row input{width:auto}");
+    sb.AppendLine("button{margin-top:24px;width:100%;padding:12px;background:#e94560;color:white;border:none;border-radius:4px;font-size:1em;cursor:pointer}");
+    sb.AppendLine(".ok{margin-top:12px;padding:10px;border-radius:4px;background:#1a6b3a}");
+    sb.AppendLine(".err{margin-top:12px;padding:10px;border-radius:4px;background:#6b1a1a}");
+    sb.AppendLine("</style></head><body>");
+    sb.AppendLine("<h1>ArduSafeMon Alpaca</h1>");
+    sb.AppendLine("<form method='post' action='/setup'>");
+
+    // Port série
+    sb.AppendLine("<label>Port serie (Arduino)</label>");
+    sb.AppendLine("<select name='ComPort'>");
+    foreach (var p in ports)
+    {
+        string sel = string.Equals(p, s.ComPort, StringComparison.OrdinalIgnoreCase) ? " selected" : "";
+        sb.AppendLine($"<option value='{p}'{sel}>{p}</option>");
+    }
+    if (!ports.Any(p => string.Equals(p, s.ComPort, StringComparison.OrdinalIgnoreCase)))
+    {
+        sb.AppendLine($"<option value='{s.ComPort}' selected>{s.ComPort} (non detecte)</option>");
+    }
+    sb.AppendLine("</select>");
+
+    // Intervalle
+    sb.AppendLine("<label>Intervalle de polling (ms)</label>");
+    sb.AppendLine($"<input type='number' name='PollIntervalMs' value='{s.PollIntervalMs}' min='500' max='30000'>");
+
+    // Simulation mode
+    string simChecked = s.SimulationMode ? " checked" : "";
+    sb.AppendLine("<div class='row'>");
+    sb.AppendLine($"<input type='checkbox' name='SimulationMode' id='sim'{simChecked}>");
+    sb.AppendLine("<label for='sim' style='margin:0'>Mode simulation (sans Arduino)</label>");
+    sb.AppendLine("</div>");
+
+    // Simulated safe
+    string safeChecked = s.SimulatedSafe ? " checked" : "";
+    sb.AppendLine("<div class='row'>");
+    sb.AppendLine($"<input type='checkbox' name='SimulatedSafe' id='safe'{safeChecked}>");
+    sb.AppendLine("<label for='safe' style='margin:0'>Etat simule : Safe</label>");
+    sb.AppendLine("</div>");
+
+    sb.AppendLine("<button type='submit'>Enregistrer</button>");
+    sb.AppendLine("</form></body></html>");
+
+    return Results.Content(sb.ToString(), "text/html; charset=utf-8");
+});
+
+app.MapPost("/setup", async (HttpRequest req, AppSettings s) =>
+{
+    var form = await req.ReadFormAsync();
+
+    string comPort = form["ComPort"].FirstOrDefault() ?? s.ComPort;
+    if (!int.TryParse(form["PollIntervalMs"].FirstOrDefault(), out int pollMs) || pollMs < 500)
+        pollMs = s.PollIntervalMs;
+    bool simMode = form.ContainsKey("SimulationMode");
+    bool simSafe = form.ContainsKey("SimulatedSafe");
+
+    // Mise à jour en mémoire
+    s.ComPort        = comPort;
+    s.PollIntervalMs = pollMs;
+    s.SimulationMode = simMode;
+    s.SimulatedSafe  = simSafe;
+
+    // Persistance dans appsettings.json
+    try
+    {
+        string appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        var json = new
+        {
+            AlpacaPort     = s.AlpacaPort,
+            ComPort        = comPort,
+            PollIntervalMs = pollMs,
+            SimulationMode = simMode,
+            SimulatedSafe  = simSafe,
+            Logging        = new { LogLevel = new { Default = "Information" } }
+        };
+        await File.WriteAllTextAsync(appSettingsPath,
+            JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true }));
+    }
+    catch (Exception ex)
+    {
+        return Results.Text($"Erreur : {ex.Message}", statusCode: 500);
+    }
+
+    // Redirige vers la page setup avec message OK
+    return Results.Redirect("/setup?saved=1");
+});
+
 // ── Management API ───────────────────────────────────────────────────────────
 
 app.MapGet("/management/apiversions", () =>
@@ -22,10 +129,10 @@ app.MapGet("/management/apiversions", () =>
 app.MapGet("/management/v1/description", () =>
     Results.Json(AlpacaResult.Ok(new
     {
-        ServerName    = "ArduSafeMon Alpaca Server",
-        Manufacturer  = "dalex",
+        ServerName          = "ArduSafeMon Alpaca Server",
+        Manufacturer        = "dalex",
         ManufacturerVersion = "1.0",
-        Location      = ""
+        Location            = ""
     })));
 
 app.MapGet("/management/v1/configureddevices", () =>
@@ -53,10 +160,9 @@ app.MapGet($"{P}/supportedactions", () => Results.Json(AlpacaResult.Ok(Array.Emp
 app.MapGet($"{P}/connected", (SafetyMonitorDevice dev) =>
     Results.Json(AlpacaResult.Ok(dev.Connected)));
 
-// NINA sends PUT /connected with form body: Connected=True&ClientID=...
 app.MapPut($"{P}/connected", async (HttpRequest req, SafetyMonitorDevice dev) =>
 {
-    var form  = await req.ReadFormAsync();
+    var form = await req.ReadFormAsync();
     bool connect = string.Equals(form["Connected"], "true",
         StringComparison.OrdinalIgnoreCase);
     int clientTx = int.TryParse(form["ClientTransactionID"], out var tx) ? tx : 0;
@@ -69,7 +175,6 @@ app.MapPut($"{P}/connected", async (HttpRequest req, SafetyMonitorDevice dev) =>
     }
     catch (Exception ex)
     {
-        // 0x0500 = InvalidOperation — NINA displays ex.Message to the user
         return Results.Json(AlpacaResult.Fail<bool>(0x0500, ex.Message,
             defaultValue: false, clientTxId: clientTx));
     }
@@ -82,12 +187,13 @@ app.MapGet($"{P}/issafe", (SafetyMonitorDevice dev) =>
     return Results.Json(AlpacaResult.Ok(dev.IsSafe));
 });
 
-// ── Start ────────────────────────────────────────────────────────────────────
-Console.WriteLine($"ArduSafeMon Alpaca  ▶  http://localhost:{settings.AlpacaPort}");
+// ── Demarrage ────────────────────────────────────────────────────────────────
+Console.WriteLine($"ArduSafeMon Alpaca  ->  http://localhost:{settings.AlpacaPort}");
+Console.WriteLine($"Configuration       ->  http://localhost:{settings.AlpacaPort}/setup");
 Console.WriteLine($"COM port : {settings.ComPort}  |  Poll : {settings.PollIntervalMs} ms" +
                   (settings.SimulationMode
                       ? $"  |  SIMULATION ({(settings.SimulatedSafe ? "Safe" : "Unsafe")})"
                       : ""));
-Console.WriteLine("Appuyez sur Ctrl+C pour arrêter.");
+Console.WriteLine("Appuyez sur Ctrl+C pour arreter.");
 
 app.Run();
