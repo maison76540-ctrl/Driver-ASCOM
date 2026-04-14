@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ArduSafeMonAlpaca",
+      "runtimeExecutable": "C:\\Program Files\\dotnet\\dotnet.exe",
+      "runtimeArgs": ["run", "--project", "ArduSafeMonAlpaca/ArduSafeMonAlpaca/ArduSafeMonAlpaca.csproj"],
+      "port": 11111
+    }
+  ]
+}
