@@ -1,5 +1,7 @@
 using System;
 using System.IO.Ports;
+using System.Runtime.ExceptionServices;
+using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using ASCOM.Utilities;
@@ -9,7 +11,10 @@ namespace ASCOM.ArduSafeMon
     /// <summary>
     /// Interroge l'Arduino toutes les N millisecondes via le port série.
     /// Le thread est seul propriétaire du SerialPort — il l'ouvre ET le ferme lui-même.
-    /// Stop() se contente d'annuler le token, sans toucher au port.
+    /// Stop() annule le token et attend la fin du thread (max 1,5 s) pour éviter
+    /// tout accès concurrent au port après la déconnexion.
+    /// [HandleProcessCorruptedStateExceptions] garantit que même une
+    /// AccessViolationException native ne peut pas faire crasher NINA.
     /// </summary>
     internal class SerialPoller : ISerialPoller
     {
@@ -35,7 +40,7 @@ namespace ASCOM.ArduSafeMon
         public void Start()
         {
             _cts = new CancellationTokenSource();
-            _pollThread = new Thread(() => PollLoop(_cts.Token))
+            _pollThread = new Thread(() => PollLoopSafe(_cts.Token))
             {
                 IsBackground = true,
                 Name = "ArduSafeMon.Poller"
@@ -44,37 +49,57 @@ namespace ASCOM.ArduSafeMon
         }
 
         /// <summary>
-        /// Annule le token et attend la fin du thread (max 2 s).
-        /// Sûr car Stop() ne touche jamais au SerialPort — c'est le thread qui le ferme
-        /// dans son finally. Le thread se termine en ≤ ReadTimeout (1 s) après l'annulation.
-        /// NINA libère le COM object juste après Connected=false : il faut que le thread
-        /// soit mort avant, sinon on obtient un crash natif (race sur la CCW).
+        /// Annule le token et attend la fin du thread (max 1 500 ms).
+        /// ReadTimeout = 300 ms → le thread se termine en ≤ 400 ms après Cancel.
+        /// Bloquer 400 ms max sur le thread COM de NINA est acceptable.
         /// </summary>
         public void Stop()
         {
             try { _cts?.Cancel(); } catch { }
-            // NE PAS toucher au SerialPort ici — le thread le ferme dans son finally.
-            // Join garantit que le thread est mort avant que NINA relâche le COM object.
-            try { _pollThread?.Join(2000); } catch { }
+            try { _pollThread?.Join(1500); } catch { }
         }
 
         public void Dispose() => Stop();
 
-        // ── Logique de polling ───────────────────────────────────────────
+        // ── Wrapper qui attrape même les exceptions de corruption d'état ──────
+
+        /// <summary>
+        /// Enveloppe HandleProcessCorruptedStateExceptions autour de PollLoop
+        /// afin qu'une AccessViolationException native ne puisse jamais
+        /// remonter dans le processus NINA et le faire crasher.
+        /// </summary>
+        [HandleProcessCorruptedStateExceptions]
+        [SecurityCritical]
+        private void PollLoopSafe(CancellationToken token)
+        {
+            try
+            {
+                PollLoop(token);
+            }
+            catch
+            {
+                // Absorbe toute exception y compris les corrupted-state exceptions
+            }
+            finally
+            {
+                _isSafe = false;
+            }
+        }
+
+        // ── Logique de polling ───────────────────────────────────────────────
 
         private void PollLoop(CancellationToken token)
         {
             SerialPort port = null;
             try
             {
-                // Le thread ouvre son propre port
                 port = new SerialPort(_portName, 9600)
                 {
-                    ReadTimeout  = 1000,
-                    WriteTimeout = 1000
+                    ReadTimeout  = 300,   // court → le thread répond vite à Cancel
+                    WriteTimeout = 300
                 };
                 port.Open();
-                Thread.Sleep(500);
+                Thread.Sleep(200);
                 port.DiscardInBuffer();
 
                 while (!token.IsCancellationRequested)
@@ -90,7 +115,6 @@ namespace ASCOM.ArduSafeMon
                         _isSafe = false;
                         if (token.IsCancellationRequested) break;
 
-                        // Attendre puis retenter de rouvrir le port
                         WaitOrCancel(5000, token);
                         if (token.IsCancellationRequested) break;
 
@@ -102,19 +126,20 @@ namespace ASCOM.ArduSafeMon
                     WaitOrCancel(_pollIntervalMs, token);
                 }
             }
-            catch { /* Sécurité absolue : rien ne peut crasher NINA */ }
+            catch { }
             finally
             {
-                // Le thread ferme toujours son propre port — jamais depuis Stop()
                 _isSafe = false;
-                try { port?.Close(); } catch { }
+                try { port?.Close(); }   catch { }
                 try { port?.Dispose(); } catch { }
             }
         }
 
+        [HandleProcessCorruptedStateExceptions]
+        [SecurityCritical]
         private SerialPort TryReopen(SerialPort oldPort, CancellationToken token)
         {
-            try { oldPort?.Close(); } catch { }
+            try { oldPort?.Close(); }   catch { }
             try { oldPort?.Dispose(); } catch { }
 
             while (!token.IsCancellationRequested)
@@ -123,11 +148,11 @@ namespace ASCOM.ArduSafeMon
                 {
                     var p = new SerialPort(_portName, 9600)
                     {
-                        ReadTimeout  = 1000,
-                        WriteTimeout = 1000
+                        ReadTimeout  = 300,
+                        WriteTimeout = 300
                     };
                     p.Open();
-                    Thread.Sleep(500);
+                    Thread.Sleep(200);
                     p.DiscardInBuffer();
                     return p;
                 }
