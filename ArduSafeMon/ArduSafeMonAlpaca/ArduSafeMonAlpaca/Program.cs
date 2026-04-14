@@ -19,6 +19,10 @@ var app = builder.Build();
 
 // ── Page de configuration ─────────────────────────────────────────────────────
 
+// Route standard Alpaca appelée par NINA quand on clique "Setup"
+app.MapGet("/setup/v1/safetymonitor/0/setup", (HttpContext ctx) =>
+    Results.Redirect("/setup"));
+
 app.MapGet("/setup", (AppSettings s) =>
 {
     string[] ports;
