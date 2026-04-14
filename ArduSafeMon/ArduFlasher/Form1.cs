@@ -1,113 +1,254 @@
 using System.Diagnostics;
 using System.IO.Ports;
-using System.Reflection;
 
 namespace ArduFlasher;
 
 public partial class Form1 : Form
 {
-    // Chemin du sketch .ino — relatif à l'EXE
+    // ── Palette de couleurs ───────────────────────────────────────────────
+    static readonly Color BG        = Color.FromArgb(18,  18,  32);
+    static readonly Color PANEL     = Color.FromArgb(28,  28,  48);
+    static readonly Color ACCENT    = Color.FromArgb(80, 160, 255);
+    static readonly Color ACCENT2   = Color.FromArgb(40, 200, 120);
+    static readonly Color TEXT      = Color.FromArgb(220, 220, 240);
+    static readonly Color TEXTDIM   = Color.FromArgb(140, 140, 170);
+    static readonly Color BORDER    = Color.FromArgb(50,  50,  80);
+    static readonly Color BTN_FLASH = Color.FromArgb(50, 160, 80);
+    static readonly Color BTN_HOV   = Color.FromArgb(60, 190, 100);
+
     private static readonly string SketchRelPath =
         Path.Combine("..", "ArduSafeMonV0_1", "ArduSafeMonV0_1.ino");
+
+    // ── Contrôles ─────────────────────────────────────────────────────────
+    private ComboBox    cbPort    = new();
+    private ComboBox    cbBoard   = new();
+    private TextBox     txtSketch = new();
+    private Button      btnBrowse = new();
+    private Button      btnRefresh= new();
+    private Button      btnFlash  = new();
+    private RichTextBox rtLog     = new();
+    private Label       lblStatus = new();
+    private Panel       pnlHeader = new();
+    private Panel       pnlBody   = new();
+    private Panel       pnlLog    = new();
+    private ProgressBar progress  = new();
 
     public Form1()
     {
         InitializeComponent();
-        Text = "ArduSafeMon — Flash Arduino";
-        ClientSize = new Size(520, 420);
+        Text            = "ArduSafeMon — Flash Arduino";
+        ClientSize      = new Size(580, 540);
+        BackColor       = BG;
+        ForeColor       = TEXT;
         FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen;
+        MaximizeBox     = false;
+        StartPosition   = FormStartPosition.CenterScreen;
+        Font            = new Font("Segoe UI", 9.5f);
 
-        BuildUI();
+        BuildHeader();
+        BuildBody();
+        BuildLog();
+
         RefreshPorts();
         DetectArduinoCli();
     }
 
-    // ── Contrôles ─────────────────────────────────────────────────────────
-    private ComboBox cbPort    = new();
-    private ComboBox cbBoard   = new();
-    private TextBox  txtSketch = new();
-    private Button   btnBrowse = new();
-    private Button   btnRefresh= new();
-    private Button   btnFlash  = new();
-    private RichTextBox rtLog  = new();
-    private Label    lblStatus = new();
-
-    private void BuildUI()
+    // ── Header ────────────────────────────────────────────────────────────
+    private void BuildHeader()
     {
-        int y = 16;
+        pnlHeader.Dock      = DockStyle.Top;
+        pnlHeader.Height    = 72;
+        pnlHeader.BackColor = PANEL;
+        pnlHeader.Paint    += (s, e) =>
+        {
+            var g = e.Graphics;
+            // Bande de couleur en bas du header
+            g.FillRectangle(new SolidBrush(ACCENT), 0, pnlHeader.Height - 3, pnlHeader.Width, 3);
+        };
 
-        // ─ Port COM ─
-        AddLabel("Port COM (Arduino) :", 16, y);
-        cbPort.Left = 180; cbPort.Top = y; cbPort.Width = 180;
-        cbPort.DropDownStyle = ComboBoxStyle.DropDownList;
-        btnRefresh.Text = "↺"; btnRefresh.Left = 368; btnRefresh.Top = y;
-        btnRefresh.Width = 40; btnRefresh.Height = 23;
-        btnRefresh.Click += (_, _) => RefreshPorts();
-        Controls.AddRange(new Control[] { cbPort, btnRefresh });
-        y += 36;
+        // Icône Arduino (texte stylisé)
+        var lblIcon = new Label
+        {
+            Text      = "⚡",
+            Font      = new Font("Segoe UI", 28),
+            ForeColor = ACCENT,
+            Left = 20, Top = 10, AutoSize = true
+        };
 
-        // ─ Carte ─
-        AddLabel("Carte Arduino :", 16, y);
-        cbBoard.Left = 180; cbBoard.Top = y; cbBoard.Width = 250;
-        cbBoard.DropDownStyle = ComboBoxStyle.DropDownList;
-        cbBoard.Items.AddRange(new object[] {
-            "arduino:avr:uno",
-            "arduino:avr:nano",
-            "arduino:avr:mega" });
-        cbBoard.SelectedIndex = 0;
-        Controls.Add(cbBoard);
-        y += 36;
+        var lblTitle = new Label
+        {
+            Text      = "ArduSafeMon Flasher",
+            Font      = new Font("Segoe UI", 16, FontStyle.Bold),
+            ForeColor = TEXT,
+            Left = 70, Top = 10, AutoSize = true
+        };
 
-        // ─ Sketch ─
-        AddLabel("Fichier .ino :", 16, y);
-        txtSketch.Left = 180; txtSketch.Top = y; txtSketch.Width = 230;
-        txtSketch.Text = ResolveSketchPath();
-        btnBrowse.Text = "…"; btnBrowse.Left = 418; btnBrowse.Top = y;
-        btnBrowse.Width = 40; btnBrowse.Height = 23;
-        btnBrowse.Click += BrowseSketch;
-        Controls.AddRange(new Control[] { txtSketch, btnBrowse });
-        y += 36;
+        var lblSub = new Label
+        {
+            Text      = "Mise à jour du firmware Arduino",
+            Font      = new Font("Segoe UI", 9),
+            ForeColor = TEXTDIM,
+            Left = 72, Top = 44, AutoSize = true
+        };
 
-        // ─ Bouton Flash ─
-        btnFlash.Text = "⚡  Flasher l'Arduino";
-        btnFlash.Left = 16; btnFlash.Top = y;
-        btnFlash.Width = 220; btnFlash.Height = 34;
-        btnFlash.BackColor = Color.FromArgb(30, 120, 180);
-        btnFlash.ForeColor = Color.White;
-        btnFlash.FlatStyle = FlatStyle.Flat;
-        btnFlash.Font = new Font("Arial", 10, FontStyle.Bold);
-        btnFlash.Click += FlashArduino;
-        Controls.Add(btnFlash);
-        y += 48;
-
-        // ─ Statut ─
-        lblStatus.Left = 16; lblStatus.Top = y;
-        lblStatus.Width = 480; lblStatus.Height = 20;
-        lblStatus.ForeColor = Color.Gray;
-        Controls.Add(lblStatus);
-        y += 24;
-
-        // ─ Log ─
-        rtLog.Left = 16; rtLog.Top = y;
-        rtLog.Width = 482; rtLog.Height = 160;
-        rtLog.ReadOnly = true;
-        rtLog.BackColor = Color.Black;
-        rtLog.ForeColor = Color.LightGray;
-        rtLog.Font = new Font("Consolas", 9);
-        rtLog.ScrollBars = RichTextBoxScrollBars.Vertical;
-        Controls.Add(rtLog);
+        pnlHeader.Controls.AddRange(new Control[] { lblIcon, lblTitle, lblSub });
+        Controls.Add(pnlHeader);
     }
 
-    private void AddLabel(string text, int x, int y)
+    // ── Corps du formulaire ───────────────────────────────────────────────
+    private void BuildBody()
     {
-        var lbl = new Label { Text = text, Left = x, Top = y + 4, Width = 160, AutoSize = true };
-        Controls.Add(lbl);
+        pnlBody.Top       = 72;
+        pnlBody.Left      = 0;
+        pnlBody.Width     = 580;
+        pnlBody.Height    = 230;
+        pnlBody.BackColor = BG;
+
+        int y = 20;
+
+        // ─ Port COM ─
+        AddSectionLabel(pnlBody, "PORT SÉRIE", 24, y - 4);
+        y += 20;
+
+        cbPort.Left        = 24;   cbPort.Top    = y;
+        cbPort.Width       = 240;  cbPort.Height = 30;
+        cbPort.DropDownStyle = ComboBoxStyle.DropDownList;
+        StyleCombo(cbPort);
+
+        btnRefresh.Left      = 272;  btnRefresh.Top   = y;
+        btnRefresh.Width     = 44;   btnRefresh.Height = 28;
+        btnRefresh.Text      = "↺";
+        btnRefresh.FlatStyle = FlatStyle.Flat;
+        btnRefresh.BackColor = PANEL;
+        btnRefresh.ForeColor = ACCENT;
+        btnRefresh.Font      = new Font("Segoe UI", 13);
+        btnRefresh.FlatAppearance.BorderColor = BORDER;
+        btnRefresh.Click    += (_, _) => RefreshPorts();
+        btnRefresh.Cursor    = Cursors.Hand;
+
+        pnlBody.Controls.AddRange(new Control[] { cbPort, btnRefresh });
+        y += 44;
+
+        // ─ Carte ─
+        AddSectionLabel(pnlBody, "CARTE ARDUINO", 24, y - 4);
+        y += 20;
+
+        cbBoard.Left         = 24;  cbBoard.Top   = y;
+        cbBoard.Width        = 292; cbBoard.Height = 30;
+        cbBoard.DropDownStyle = ComboBoxStyle.DropDownList;
+        cbBoard.Items.AddRange(new object[] {
+            "arduino:avr:uno   (Arduino Uno / Uno R3)",
+            "arduino:avr:nano  (Arduino Nano)",
+            "arduino:avr:mega  (Arduino Mega 2560)" });
+        cbBoard.SelectedIndex = 0;
+        StyleCombo(cbBoard);
+        pnlBody.Controls.Add(cbBoard);
+        y += 44;
+
+        // ─ Sketch ─
+        AddSectionLabel(pnlBody, "FICHIER SKETCH (.ino)", 24, y - 4);
+        y += 20;
+
+        txtSketch.Left      = 24;  txtSketch.Top    = y;
+        txtSketch.Width     = 430; txtSketch.Height = 28;
+        txtSketch.Text      = ResolveSketchPath();
+        txtSketch.BackColor = PANEL;
+        txtSketch.ForeColor = TEXT;
+        txtSketch.BorderStyle = BorderStyle.FixedSingle;
+
+        btnBrowse.Left      = 462; btnBrowse.Top  = y;
+        btnBrowse.Width     = 90;  btnBrowse.Height = 28;
+        btnBrowse.Text      = "Parcourir…";
+        btnBrowse.FlatStyle = FlatStyle.Flat;
+        btnBrowse.BackColor = PANEL;
+        btnBrowse.ForeColor = ACCENT;
+        btnBrowse.FlatAppearance.BorderColor = BORDER;
+        btnBrowse.Click += BrowseSketch;
+        btnBrowse.Cursor = Cursors.Hand;
+
+        pnlBody.Controls.AddRange(new Control[] { txtSketch, btnBrowse });
+
+        Controls.Add(pnlBody);
+    }
+
+    private void BuildLog()
+    {
+        // ─ Bouton Flash ─
+        btnFlash.Top        = 308;
+        btnFlash.Left       = 24;
+        btnFlash.Width      = 534;
+        btnFlash.Height     = 44;
+        btnFlash.Text       = "⚡   FLASHER L'ARDUINO";
+        btnFlash.Font       = new Font("Segoe UI", 12, FontStyle.Bold);
+        btnFlash.BackColor  = BTN_FLASH;
+        btnFlash.ForeColor  = Color.White;
+        btnFlash.FlatStyle  = FlatStyle.Flat;
+        btnFlash.FlatAppearance.BorderSize = 0;
+        btnFlash.Cursor     = Cursors.Hand;
+        btnFlash.Click     += FlashArduino;
+        btnFlash.MouseEnter += (_, _) => btnFlash.BackColor = BTN_HOV;
+        btnFlash.MouseLeave += (_, _) => btnFlash.BackColor = BTN_FLASH;
+
+        // ─ Barre de progression ─
+        progress.Top     = 358;
+        progress.Left    = 24;
+        progress.Width   = 534;
+        progress.Height  = 6;
+        progress.Style   = ProgressBarStyle.Marquee;
+        progress.Visible = false;
+        progress.MarqueeAnimationSpeed = 30;
+
+        // ─ Statut ─
+        lblStatus.Top       = 368;
+        lblStatus.Left      = 24;
+        lblStatus.Width     = 534;
+        lblStatus.Height    = 22;
+        lblStatus.ForeColor = TEXTDIM;
+        lblStatus.Text      = "Prêt.";
+        lblStatus.Font      = new Font("Segoe UI", 9, FontStyle.Italic);
+
+        // ─ Panel log ─
+        pnlLog.Top       = 396;
+        pnlLog.Left      = 24;
+        pnlLog.Width     = 534;
+        pnlLog.Height    = 128;
+        pnlLog.BackColor = Color.Black;
+        pnlLog.BorderStyle = BorderStyle.FixedSingle;
+
+        rtLog.Dock      = DockStyle.Fill;
+        rtLog.ReadOnly  = true;
+        rtLog.BackColor = Color.FromArgb(10, 10, 20);
+        rtLog.ForeColor = Color.LightGray;
+        rtLog.Font      = new Font("Consolas", 8.5f);
+        rtLog.ScrollBars = RichTextBoxScrollBars.Vertical;
+        rtLog.BorderStyle = BorderStyle.None;
+
+        pnlLog.Controls.Add(rtLog);
+
+        Controls.AddRange(new Control[] { btnFlash, progress, lblStatus, pnlLog });
+    }
+
+    // ── Helpers de style ──────────────────────────────────────────────────
+    private void StyleCombo(ComboBox cb)
+    {
+        cb.BackColor  = PANEL;
+        cb.ForeColor  = TEXT;
+        cb.FlatStyle  = FlatStyle.Flat;
+    }
+
+    private void AddSectionLabel(Control parent, string text, int x, int y)
+    {
+        var lbl = new Label
+        {
+            Text      = text,
+            Font      = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = ACCENT,
+            Left = x, Top = y, AutoSize = true
+        };
+        parent.Controls.Add(lbl);
     }
 
     // ── Logique ───────────────────────────────────────────────────────────
-
     private void RefreshPorts()
     {
         string? sel = cbPort.SelectedItem?.ToString();
@@ -118,12 +259,15 @@ public partial class Form1 : Form
             cbPort.SelectedItem = sel;
         else if (cbPort.Items.Count > 0)
             cbPort.SelectedIndex = 0;
+
+        if (cbPort.Items.Count == 0)
+            Log("Aucun port COM détecté. Branchez l'Arduino.", Color.Orange);
     }
 
     private string ResolveSketchPath()
     {
-        string exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".";
-        string full = Path.GetFullPath(Path.Combine(exeDir, SketchRelPath));
+        string exeDir = AppContext.BaseDirectory;
+        string full   = Path.GetFullPath(Path.Combine(exeDir, SketchRelPath));
         return File.Exists(full) ? full : "";
     }
 
@@ -132,26 +276,23 @@ public partial class Form1 : Form
         string? path = FindArduinoCli();
         if (path == null)
         {
-            Log("arduino-cli non trouvé.", Color.Orange);
-            Log("Téléchargez-le sur https://arduino.github.io/arduino-cli/", Color.Orange);
-            Log("Ou installez Arduino IDE 2.x qui l'inclut.", Color.Orange);
+            Log("⚠  arduino-cli non trouvé.", Color.Orange);
+            Log("   → Installez Arduino IDE 2.x : https://www.arduino.cc/en/software", Color.Orange);
         }
         else
         {
-            Log($"arduino-cli trouvé : {path}", Color.LightGreen);
+            Log($"✔  arduino-cli : {path}", ACCENT2);
         }
     }
 
     private static string? FindArduinoCli()
     {
-        // Cherche dans PATH et dans les emplacements courants d'Arduino IDE
         string[] candidates = {
             "arduino-cli",
             @"C:\Program Files\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe",
             @"C:\Users\" + Environment.UserName + @"\AppData\Local\Arduino15\arduino-cli.exe",
             @"C:\Program Files (x86)\Arduino\arduino-cli.exe"
         };
-
         foreach (string c in candidates)
         {
             try
@@ -159,8 +300,8 @@ public partial class Form1 : Form
                 var p = Process.Start(new ProcessStartInfo(c, "version")
                 {
                     RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    UseShellExecute        = false,
+                    CreateNoWindow         = true
                 });
                 p?.WaitForExit(2000);
                 if (p?.ExitCode == 0) return c;
@@ -174,7 +315,7 @@ public partial class Form1 : Form
     {
         using var dlg = new OpenFileDialog
         {
-            Title = "Sélectionner le sketch Arduino",
+            Title  = "Sélectionner le sketch Arduino",
             Filter = "Sketches Arduino (*.ino)|*.ino",
             FileName = txtSketch.Text
         };
@@ -192,7 +333,8 @@ public partial class Form1 : Form
         }
         if (!File.Exists(txtSketch.Text))
         {
-            MessageBox.Show("Fichier .ino introuvable.\nUtilisez le bouton … pour le localiser.",
+            MessageBox.Show(
+                "Fichier .ino introuvable.\nUtilisez le bouton Parcourir pour le localiser.",
                 "Sketch manquant", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -208,30 +350,46 @@ public partial class Form1 : Form
             return;
         }
 
+        // FQBN : prendre seulement la première partie avant l'espace
+        string fqbn   = cbBoard.SelectedItem!.ToString()!.Split(' ')[0];
         string port   = cbPort.SelectedItem.ToString()!;
-        string board  = cbBoard.SelectedItem?.ToString() ?? "arduino:avr:uno";
         string sketch = Path.GetDirectoryName(txtSketch.Text)!;
 
         btnFlash.Enabled = false;
+        progress.Visible = true;
         rtLog.Clear();
-        SetStatus("Compilation en cours…", Color.CornflowerBlue);
 
-        // Compile
-        bool ok = await RunCliAsync(cli, $"compile --fqbn {board} \"{sketch}\"");
+        // ─ Étape 1 : compilation ─
+        SetStatus("⚙  Compilation en cours…", ACCENT);
+        Log("─── Compilation ─────────────────────────", TEXTDIM);
+        bool ok = await RunCliAsync(cli, $"compile --fqbn {fqbn} \"{sketch}\"");
+
         if (!ok)
         {
-            SetStatus("❌ Erreur de compilation.", Color.Tomato);
+            SetStatus("❌  Erreur de compilation.", Color.Tomato);
+            progress.Visible = false;
             btnFlash.Enabled = true;
             return;
         }
 
-        SetStatus("Upload en cours…", Color.CornflowerBlue);
+        // ─ Étape 2 : upload ─
+        SetStatus("⬆  Upload en cours…", ACCENT);
+        Log("─── Upload ───────────────────────────────", TEXTDIM);
+        ok = await RunCliAsync(cli, $"upload -p {port} --fqbn {fqbn} \"{sketch}\"");
 
-        // Upload
-        ok = await RunCliAsync(cli, $"upload -p {port} --fqbn {board} \"{sketch}\"");
-
-        SetStatus(ok ? "✅ Flash réussi !" : "❌ Erreur d'upload.", ok ? Color.LightGreen : Color.Tomato);
+        progress.Visible = false;
         btnFlash.Enabled = true;
+
+        if (ok)
+        {
+            SetStatus("✅  Flash réussi ! L'Arduino est à jour.", ACCENT2);
+            Log("─── Terminé ──────────────────────────────", TEXTDIM);
+            Log("✔  Firmware flashé avec succès.", ACCENT2);
+        }
+        else
+        {
+            SetStatus("❌  Erreur lors de l'upload.", Color.Tomato);
+        }
     }
 
     private Task<bool> RunCliAsync(string cli, string args)
@@ -245,11 +403,9 @@ public partial class Form1 : Form
             CreateNoWindow         = true
         };
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
         p.OutputDataReceived += (_, e) => { if (e.Data != null) LogSafe(e.Data, Color.LightGray); };
         p.ErrorDataReceived  += (_, e) => { if (e.Data != null) LogSafe(e.Data, Color.LightYellow); };
         p.Exited += (_, _) => tcs.SetResult(p.ExitCode == 0);
-
         p.Start();
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
@@ -276,5 +432,7 @@ public partial class Form1 : Form
         if (InvokeRequired) { Invoke(() => SetStatus(text, color)); return; }
         lblStatus.Text      = text;
         lblStatus.ForeColor = color;
+        lblStatus.Font      = new Font("Segoe UI", 9,
+            text.StartsWith("✅") ? FontStyle.Bold : FontStyle.Italic);
     }
 }
