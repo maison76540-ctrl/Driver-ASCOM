@@ -6,12 +6,10 @@ using ASCOM.Utilities;
 namespace ASCOM.ArduSafeMon
 {
     /// <summary>
-    /// Interroge l'Arduino de façon synchrone lors de chaque appel à IsSafe.
-    /// Pas de thread background — élimine tous les problèmes de crash liés
-    /// aux threads non gérés dans le processus NINA (.NET 10).
-    /// Le résultat est mis en cache : le port série n'est interrogé qu'une fois
-    /// par intervalle de polling (défaut 2 s). NINA appelle IsSafe toutes les
-    /// quelques secondes ; bloquer 300 ms max est parfaitement acceptable.
+    /// Gère la communication série avec l'Arduino.
+    /// Le port est ouvert lors de Connect() et fermé lors de Stop().
+    /// IsSafe interroge le port de façon synchrone avec cache temporel.
+    /// Toutes les exceptions sont absorbées — rien ne peut crasher NINA.
     /// </summary>
     internal class SerialPoller : ISerialPoller
     {
@@ -22,7 +20,7 @@ namespace ASCOM.ArduSafeMon
         private SerialPort _port;
         private bool _isSafe = false;
         private DateTime _lastPoll = DateTime.MinValue;
-        private bool _stopped = false;
+        private bool _stopped = true;
 
         public SerialPoller(string portName, int pollIntervalMs, TraceLogger logger)
         {
@@ -30,11 +28,6 @@ namespace ASCOM.ArduSafeMon
             _pollIntervalMs = pollIntervalMs;
         }
 
-        /// <summary>
-        /// Retourne l'état de sécurité.
-        /// Si l'intervalle de polling est écoulé, interroge le port série
-        /// de façon synchrone (bloque max 300 ms) puis met à jour le cache.
-        /// </summary>
         public bool IsSafe
         {
             get
@@ -55,8 +48,9 @@ namespace ASCOM.ArduSafeMon
         }
 
         /// <summary>
-        /// Prépare le poller (rien à démarrer — pas de thread).
-        /// Réinitialise l'état arrêté si on reconnecte.
+        /// Ouvre le port et vérifie que l'Arduino répond.
+        /// Lance une exception descriptive si le port est introuvable ou si
+        /// l'Arduino ne répond pas — NINA affiche ce message à l'utilisateur.
         /// </summary>
         public void Start()
         {
@@ -65,10 +59,10 @@ namespace ASCOM.ArduSafeMon
                 _stopped = false;
                 _isSafe = false;
                 _lastPoll = DateTime.MinValue;
+                OpenPort(); // valide immédiatement — lève une exception si erreur
             }
         }
 
-        /// <summary>Ferme le port et marque le poller comme arrêté.</summary>
         public void Stop()
         {
             lock (_lock)
@@ -81,18 +75,17 @@ namespace ASCOM.ArduSafeMon
 
         public void Dispose() => Stop();
 
-        // ── Accès série synchrone ────────────────────────────────────────────
+        // ── Accès série ──────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Envoie "S#" et lit la réponse. Appelé depuis IsSafe sous lock.
-        /// Toutes les exceptions sont absorbées : en cas d'erreur _isSafe = false.
-        /// </summary>
         private void RefreshSafe()
         {
             _lastPoll = DateTime.Now;
             try
             {
-                EnsurePortOpen();
+                if (_port == null || !_port.IsOpen)
+                    OpenPort();
+
+                _port.DiscardInBuffer();
                 _port.Write("S#");
                 string response = _port.ReadTo("#");
                 _isSafe = ParseResponse(response);
@@ -100,25 +93,57 @@ namespace ASCOM.ArduSafeMon
             catch
             {
                 _isSafe = false;
-                // Ferme le port pour forcer une réouverture au prochain appel
-                ClosePort();
+                ClosePort(); // sera rouvert au prochain appel
             }
         }
 
-        /// <summary>Ouvre le port s'il n'est pas déjà ouvert.</summary>
-        private void EnsurePortOpen()
+        /// <summary>
+        /// Ouvre le port. Lance une exception avec message lisible si échec.
+        /// Cette exception remonte dans Connect() → NINA l'affiche.
+        /// </summary>
+        private void OpenPort()
         {
-            if (_port != null && _port.IsOpen) return;
-
             ClosePort();
-            _port = new SerialPort(_portName, 9600)
+
+            // Vérifie que le port existe dans la liste système
+            bool portExists = false;
+            try
             {
-                ReadTimeout  = 300,
-                WriteTimeout = 300
-            };
-            _port.Open();
-            Thread.Sleep(200);      // laisse l'Arduino se stabiliser
-            _port.DiscardInBuffer();
+                string[] ports = SerialPort.GetPortNames();
+                foreach (string p in ports)
+                {
+                    if (string.Equals(p, _portName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        portExists = true;
+                        break;
+                    }
+                }
+            }
+            catch { }
+
+            if (!portExists)
+                throw new Exception(
+                    $"Port série '{_portName}' introuvable. " +
+                    "Vérifiez que l'Arduino est branché et configurez le bon port " +
+                    "dans Setup.");
+
+            try
+            {
+                _port = new SerialPort(_portName, 9600)
+                {
+                    ReadTimeout  = 2000,
+                    WriteTimeout = 2000
+                };
+                _port.Open();
+                Thread.Sleep(500);
+                _port.DiscardInBuffer();
+            }
+            catch (Exception ex)
+            {
+                ClosePort();
+                throw new Exception(
+                    $"Impossible d'ouvrir le port '{_portName}' : {ex.Message}");
+            }
         }
 
         private void ClosePort()

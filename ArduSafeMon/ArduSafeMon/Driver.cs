@@ -142,8 +142,12 @@ namespace ASCOM.ArduSafeMon
                 string port = _testMode ? "COM1" : _profile.ComPort;
                 int interval = _testMode ? 2000 : _profile.PollIntervalMs;
 
-                _poller = new SerialPoller(port, interval, _logger);
-                _poller.Start();
+                var poller = new SerialPoller(port, interval, _logger);
+                // Start() ouvre le port série et lève une exception lisible si
+                // le port est introuvable ou si l'Arduino ne répond pas.
+                // NINA attrape cette exception et affiche le message à l'utilisateur.
+                poller.Start();  // peut lever Exception — pas de _connected = true
+                _poller = poller;
             }
 
             _connected = true;
