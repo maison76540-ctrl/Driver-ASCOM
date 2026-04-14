@@ -44,13 +44,18 @@ namespace ASCOM.ArduSafeMon
         }
 
         /// <summary>
-        /// Annule le token — le thread sortira de lui-même au prochain timeout (max 1s)
-        /// et fermera le port dans son finally. Stop() ne bloque jamais NINA.
+        /// Annule le token et attend la fin du thread (max 2 s).
+        /// Sûr car Stop() ne touche jamais au SerialPort — c'est le thread qui le ferme
+        /// dans son finally. Le thread se termine en ≤ ReadTimeout (1 s) après l'annulation.
+        /// NINA libère le COM object juste après Connected=false : il faut que le thread
+        /// soit mort avant, sinon on obtient un crash natif (race sur la CCW).
         /// </summary>
         public void Stop()
         {
             try { _cts?.Cancel(); } catch { }
-            // NE PAS toucher au SerialPort ici — le thread le ferme dans son finally
+            // NE PAS toucher au SerialPort ici — le thread le ferme dans son finally.
+            // Join garantit que le thread est mort avant que NINA relâche le COM object.
+            try { _pollThread?.Join(2000); } catch { }
         }
 
         public void Dispose() => Stop();
