@@ -2,42 +2,57 @@
 AppName=ArduSafeMon Alpaca Safety Monitor
 AppVersion=1.0
 AppPublisher=dalex
+AppPublisherURL=https://github.com/maison76540-ctrl/Driver-ASCOM
 DefaultDirName={autopf}\ArduSafeMonAlpaca
 DefaultGroupName=ArduSafeMon
 OutputDir=.\Installer
-OutputBaseFilename=ArduSafeMonAlpaca_Setup_v1.0
+OutputBaseFilename=ArduSafeMon_Setup_v1.0
 Compression=lzma
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64
-MinVersion=6.1
+PrivilegesRequired=admin
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=6.1sp1
 
 [Files]
 ; Serveur Alpaca (self-contained, aucun .NET requis)
 Source: "ArduSafeMonAlpaca\ArduSafeMonAlpaca\bin\Release\net8.0\win-x64\publish\ArduSafeMonAlpaca.exe"; \
   DestDir: "{app}"; Flags: ignoreversion
 
-; Config — onlyifdoesntexist pour ne pas écraser les settings de l'utilisateur
+; Config — onlyifdoesntexist pour ne pas ecraser les settings de l'utilisateur
 Source: "ArduSafeMonAlpaca\ArduSafeMonAlpaca\bin\Release\net8.0\win-x64\publish\appsettings.json"; \
-  DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
+  DestDir: "{app}"; Flags: onlyifdoesntexist
+
+; ArduFlasher — outil de mise a jour du firmware Arduino
+Source: "ArduFlasher\bin\Release\net10.0-windows\win-x64\publish\ArduFlasher.exe"; \
+  DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; Raccourci dans le menu Démarrer
-Name: "{group}\ArduSafeMon Alpaca"; Filename: "{app}\ArduSafeMonAlpaca.exe"
-Name: "{group}\Désinstaller ArduSafeMon Alpaca"; Filename: "{uninstallexe}"
+; Menu Demarrer
+Name: "{group}\ArduSafeMon Alpaca (serveur)"; Filename: "{app}\ArduSafeMonAlpaca.exe"
+Name: "{group}\ArduFlasher (mise a jour firmware)"; Filename: "{app}\ArduFlasher.exe"
+Name: "{group}\Desinstaller ArduSafeMon"; Filename: "{uninstallexe}"
 
-; Démarrage automatique avec Windows (répertoire Startup de l'utilisateur)
-Name: "{userstartup}\ArduSafeMon Alpaca"; Filename: "{app}\ArduSafeMonAlpaca.exe"
+; Raccourci bureau pour le serveur
+Name: "{commondesktop}\ArduSafeMon Alpaca"; Filename: "{app}\ArduSafeMonAlpaca.exe"
+
+; Demarrage automatique avec Windows (serveur uniquement)
+Name: "{commonstartup}\ArduSafeMon Alpaca"; Filename: "{app}\ArduSafeMonAlpaca.exe"
 
 [Run]
-; Démarrer le serveur immédiatement après installation
+; Demarrer le serveur immediatement apres installation
 Filename: "{app}\ArduSafeMonAlpaca.exe"; \
   Flags: nowait postinstall skipifsilent; \
-  Description: "Démarrer ArduSafeMon Alpaca maintenant"
+  Description: "Demarrer ArduSafeMon Alpaca maintenant"
+
+; Proposer d'ouvrir ArduFlasher pour flasher l'Arduino
+Filename: "{app}\ArduFlasher.exe"; \
+  Flags: nowait postinstall skipifsilent unchecked; \
+  Description: "Ouvrir ArduFlasher pour mettre a jour le firmware Arduino"
 
 [UninstallRun]
-; Arrêter le serveur avant désinstallation
+; Arreter le serveur avant desinstallation
 Filename: "taskkill"; Parameters: "/F /IM ArduSafeMonAlpaca.exe"; \
-  Flags: runhidden waituntilterminated
+  Flags: runhidden waituntilterminated; RunOnceId: "StopServer"
 
 [Messages]
-WelcomeLabel2=Ce programme va installer ArduSafeMon Alpaca Safety Monitor v1.0.%n%nCe serveur permet à NINA de surveiller la position du toit via un Arduino Uno.%n%nAucune plateforme ASCOM n'est requise.%n%nLe serveur démarrera automatiquement avec Windows.
+WelcomeLabel2=Ce programme va installer ArduSafeMon Alpaca Safety Monitor v1.0.%n%nContenu du package :%n  - ArduSafeMon Alpaca : serveur ASCOM Alpaca pour NINA%n  - ArduFlasher : outil de mise a jour du firmware Arduino%n%nAucune plateforme ASCOM ni .NET n'est requise.%n%nLe serveur demarrera automatiquement avec Windows.
