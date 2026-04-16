@@ -4,7 +4,29 @@ using System.Text.Json;
 using ArduSafeMonAlpaca;
 
 // ── Configuration ────────────────────────────────────────────────────────────
+
+// Fichier de config dans %ProgramData%\ArduSafeMonAlpaca\ pour permettre
+// l'ecriture sans droits admin (evite l'erreur "Access denied" sur Program Files)
+static string GetConfigPath()
+{
+    string dir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "ArduSafeMonAlpaca");
+    Directory.CreateDirectory(dir);
+    return Path.Combine(dir, "appsettings.json");
+}
+
+string configPath = GetConfigPath();
+
+// Si pas encore de config dans ProgramData, copier celle de l'appli (defaults)
+if (!File.Exists(configPath))
+{
+    string src = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+    if (File.Exists(src)) File.Copy(src, configPath);
+}
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile(configPath, optional: true, reloadOnChange: false);
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
@@ -100,10 +122,10 @@ app.MapPost("/setup", async (HttpRequest req, AppSettings s) =>
     s.SimulationMode = simMode;
     s.SimulatedSafe  = simSafe;
 
-    // Persistance dans appsettings.json
+    // Persistance dans %ProgramData%\ArduSafeMonAlpaca\appsettings.json
     try
     {
-        string appSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        string appSettingsPath = GetConfigPath();
         var json = new
         {
             AlpacaPort     = s.AlpacaPort,
