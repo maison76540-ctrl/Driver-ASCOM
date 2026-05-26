@@ -381,11 +381,28 @@ public partial class Form1 : Form
             return;
         }
 
-        // ─ Étape 1b : 1200-baud touch (Nano Every uniquement) ─
-        // Ouvre le port à 1200 baud puis le referme pour déclencher le bootloader
-        // sans appuyer physiquement sur le bouton RESET.
+        // ─ Étape 1b : libérer le port (arrêt ArduSafeMon si nécessaire) ─
+        bool serverWasRunning = false;
         if (isNanoEvery)
         {
+            SetStatus("🔄  Vérification du port…", ACCENT);
+            Log("─── Libération du port ───────────────────", TEXTDIM);
+
+            // Vérifier si le port est occupé (ex: ArduSafeMonAlpaca.exe le tient ouvert)
+            bool portBusy = IsPortBusy(port);
+            if (portBusy)
+            {
+                Log($"⚠  Port {port} occupé — arrêt du serveur ArduSafeMon…", Color.Orange);
+                serverWasRunning = StopArduSafeMon();
+                await Task.Delay(1500); // laisser le port se libérer
+                Log("✔  Serveur arrêté.", Color.LightGray);
+            }
+            else
+            {
+                Log($"✔  Port {port} disponible.", Color.LightGray);
+            }
+
+            // 1200-baud touch pour déclencher le bootloader sans bouton RESET
             SetStatus("🔄  Activation du bootloader (1200 baud touch)…", ACCENT);
             Log("─── Bootloader touch ─────────────────────", TEXTDIM);
             try
@@ -398,8 +415,7 @@ public partial class Form1 : Form
             }
             catch (Exception ex)
             {
-                Log($"⚠  1200-baud touch impossible : {ex.Message}", Color.Orange);
-                Log("   (tentative d'upload quand même…)", Color.Orange);
+                Log($"⚠  1200-baud touch échoué : {ex.Message}", Color.Orange);
             }
             // Attendre que le bootloader soit prêt (~2 s)
             Log("   Attente du bootloader…", Color.LightGray);
@@ -423,6 +439,58 @@ public partial class Form1 : Form
         else
         {
             SetStatus("❌  Erreur lors de l'upload.", Color.Tomato);
+        }
+
+        // Relancer le serveur ArduSafeMon s'il tournait avant le flash
+        if (serverWasRunning)
+        {
+            Log("─── Redémarrage du serveur ───────────────", TEXTDIM);
+            await Task.Delay(1000);
+            StartArduSafeMon();
+            Log("✔  ArduSafeMonAlpaca relancé.", ACCENT2);
+        }
+    }
+
+    // ── Gestion du serveur ArduSafeMon ───────────────────────────────────────
+    private static bool IsPortBusy(string port)
+    {
+        try
+        {
+            using var sp = new SerialPort(port, 9600);
+            sp.Open();
+            sp.Close();
+            return false; // port libre
+        }
+        catch
+        {
+            return true; // port occupé
+        }
+    }
+
+    private static bool StopArduSafeMon()
+    {
+        var procs = Process.GetProcessesByName("ArduSafeMonAlpaca");
+        foreach (var p in procs)
+        {
+            try { p.Kill(); p.WaitForExit(3000); } catch { }
+        }
+        return procs.Length > 0;
+    }
+
+    private static void StartArduSafeMon()
+    {
+        // Chercher l'exe dans le même dossier que ArduFlasher
+        string[] candidates = {
+            Path.Combine(AppContext.BaseDirectory, "ArduSafeMonAlpaca.exe"),
+            Path.Combine(Path.GetDirectoryName(AppContext.BaseDirectory) ?? ".", "ArduSafeMonAlpaca.exe"),
+        };
+        foreach (string c in candidates)
+        {
+            if (File.Exists(c))
+            {
+                Process.Start(new ProcessStartInfo(c) { UseShellExecute = true });
+                return;
+            }
         }
     }
 
