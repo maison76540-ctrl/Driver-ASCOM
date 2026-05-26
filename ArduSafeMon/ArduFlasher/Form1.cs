@@ -402,24 +402,19 @@ public partial class Form1 : Form
                 Log($"✔  Port {port} disponible.", Color.LightGray);
             }
 
-            // 1200-baud touch pour déclencher le bootloader sans bouton RESET
-            SetStatus("🔄  Activation du bootloader (1200 baud touch)…", ACCENT);
+            // 1200-baud touch + détection du nouveau port bootloader
+            SetStatus("🔄  Activation du bootloader…", ACCENT);
             Log("─── Bootloader touch ─────────────────────", TEXTDIM);
-            try
+            string? bootPort = await TriggerBootloaderGetPort(port);
+            if (bootPort != null && bootPort != port)
             {
-                using var sp = new SerialPort(port, 1200);
-                sp.Open();
-                await Task.Delay(200);
-                sp.Close();
-                Log($"✔  Port {port} ouvert/fermé à 1200 baud.", Color.LightGray);
+                Log($"✔  Bootloader détecté sur {bootPort} (était {port}).", ACCENT2);
+                port = bootPort;   // upload sur le nouveau port
             }
-            catch (Exception ex)
+            else
             {
-                Log($"⚠  1200-baud touch échoué : {ex.Message}", Color.Orange);
+                Log($"   Pas de nouveau port détecté, utilisation de {port}.", Color.LightGray);
             }
-            // Attendre que le bootloader soit prêt (~2 s)
-            Log("   Attente du bootloader…", Color.LightGray);
-            await Task.Delay(2000);
         }
 
         // ─ Étape 2 : upload ─
@@ -449,6 +444,42 @@ public partial class Form1 : Form
             StartArduSafeMon();
             Log("✔  ArduSafeMonAlpaca relancé.", ACCENT2);
         }
+    }
+
+    // ── Bootloader touch + détection du nouveau port ─────────────────────────
+    private async Task<string?> TriggerBootloaderGetPort(string originalPort)
+    {
+        // Mémoriser les ports actuels AVANT le touch
+        var portsBefore = SerialPort.GetPortNames().ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Ouvrir/fermer à 1200 baud pour déclencher le bootloader
+        try
+        {
+            using var sp = new SerialPort(originalPort, 1200) { DtrEnable = true };
+            sp.Open();
+            await Task.Delay(200);
+            sp.Close();
+            Log($"   Touch 1200 baud sur {originalPort}.", Color.LightGray);
+        }
+        catch (Exception ex)
+        {
+            Log($"⚠  Touch échoué : {ex.Message}", Color.Orange);
+        }
+
+        // Attendre l'apparition d'un nouveau port (jusqu'à 6 s)
+        Log("   Recherche du port bootloader…", Color.LightGray);
+        for (int i = 0; i < 30; i++)
+        {
+            await Task.Delay(200);
+            var portsNow = SerialPort.GetPortNames();
+            var newPorts = portsNow
+                .Where(p => !portsBefore.Contains(p))
+                .ToList();
+            if (newPorts.Count > 0)
+                return newPorts[0];
+        }
+
+        return originalPort; // aucun nouveau port détecté
     }
 
     // ── Gestion du serveur ArduSafeMon ───────────────────────────────────────
