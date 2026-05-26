@@ -137,9 +137,11 @@ public partial class Form1 : Form
         cbBoard.Width        = 292; cbBoard.Height = 30;
         cbBoard.DropDownStyle = ComboBoxStyle.DropDownList;
         cbBoard.Items.AddRange(new object[] {
-            "arduino:avr:uno   (Arduino Uno / Uno R3)",
-            "arduino:avr:nano  (Arduino Nano)",
-            "arduino:avr:mega  (Arduino Mega 2560)" });
+            "arduino:megaavr:nona4809            (Arduino Nano Every)",
+            "arduino:avr:nano:cpu=atmega328      (Arduino Nano — nouveau bootloader)",
+            "arduino:avr:nano:cpu=atmega328old   (Arduino Nano — ancien bootloader / clone CH340)",
+            "arduino:avr:uno                     (Arduino Uno / Uno R3)",
+            "arduino:avr:mega:cpu=atmega2560     (Arduino Mega 2560)" });
         cbBoard.SelectedIndex = 0;
         StyleCombo(cbBoard);
         pnlBody.Controls.Add(cbBoard);
