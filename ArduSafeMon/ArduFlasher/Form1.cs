@@ -362,6 +362,7 @@ public partial class Form1 : Form
         string fqbn   = cbBoard.SelectedItem!.ToString()!.Split(' ')[0];
         string port   = cbPort.SelectedItem.ToString()!;
         string sketch = Path.GetDirectoryName(txtSketch.Text)!;
+        bool   isNanoEvery = fqbn.StartsWith("arduino:megaavr");
 
         btnFlash.Enabled = false;
         progress.Visible = true;
@@ -378,6 +379,31 @@ public partial class Form1 : Form
             progress.Visible = false;
             btnFlash.Enabled = true;
             return;
+        }
+
+        // ─ Étape 1b : 1200-baud touch (Nano Every uniquement) ─
+        // Ouvre le port à 1200 baud puis le referme pour déclencher le bootloader
+        // sans appuyer physiquement sur le bouton RESET.
+        if (isNanoEvery)
+        {
+            SetStatus("🔄  Activation du bootloader (1200 baud touch)…", ACCENT);
+            Log("─── Bootloader touch ─────────────────────", TEXTDIM);
+            try
+            {
+                using var sp = new SerialPort(port, 1200);
+                sp.Open();
+                await Task.Delay(200);
+                sp.Close();
+                Log($"✔  Port {port} ouvert/fermé à 1200 baud.", Color.LightGray);
+            }
+            catch (Exception ex)
+            {
+                Log($"⚠  1200-baud touch impossible : {ex.Message}", Color.Orange);
+                Log("   (tentative d'upload quand même…)", Color.Orange);
+            }
+            // Attendre que le bootloader soit prêt (~2 s)
+            Log("   Attente du bootloader…", Color.LightGray);
+            await Task.Delay(2000);
         }
 
         // ─ Étape 2 : upload ─
