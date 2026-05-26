@@ -289,8 +289,14 @@ public partial class Form1 : Form
     {
         string[] candidates = {
             "arduino-cli",
+            // Arduino IDE 2.x installé dans Program Files
             @"C:\Program Files\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe",
+            // Arduino IDE 2.x installé dans AppData\Local\Programs (installation utilisateur)
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                @"Programs\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe"),
+            // arduino-cli standalone dans AppData\Local\Arduino15
             @"C:\Users\" + Environment.UserName + @"\AppData\Local\Arduino15\arduino-cli.exe",
+            // Arduino IDE 1.x
             @"C:\Program Files (x86)\Arduino\arduino-cli.exe"
         };
         foreach (string c in candidates)
