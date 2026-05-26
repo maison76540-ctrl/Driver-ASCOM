@@ -381,46 +381,31 @@ public partial class Form1 : Form
             return;
         }
 
-        // ─ Étape 1b : libérer le port (arrêt ArduSafeMon si nécessaire) ─
+        // ─ Étape 1b : libérer le port avant l'upload ─
+        // arduino-cli gère lui-même le 1200-baud touch et la détection du port bootloader.
+        // Notre rôle : s'assurer que rien d'autre ne tient le port ouvert.
         bool serverWasRunning = false;
-        if (isNanoEvery)
         {
             SetStatus("🔄  Vérification du port…", ACCENT);
             Log("─── Libération du port ───────────────────", TEXTDIM);
-
-            // Vérifier si le port est occupé (ex: ArduSafeMonAlpaca.exe le tient ouvert)
             bool portBusy = IsPortBusy(port);
             if (portBusy)
             {
                 Log($"⚠  Port {port} occupé — arrêt du serveur ArduSafeMon…", Color.Orange);
                 serverWasRunning = StopArduSafeMon();
-                await Task.Delay(1500); // laisser le port se libérer
-                Log("✔  Serveur arrêté.", Color.LightGray);
+                await Task.Delay(2000);
+                Log("✔  Serveur arrêté, port libéré.", Color.LightGray);
             }
             else
             {
-                Log($"✔  Port {port} disponible.", Color.LightGray);
-            }
-
-            // 1200-baud touch + détection du nouveau port bootloader
-            SetStatus("🔄  Activation du bootloader…", ACCENT);
-            Log("─── Bootloader touch ─────────────────────", TEXTDIM);
-            string? bootPort = await TriggerBootloaderGetPort(port);
-            if (bootPort != null && bootPort != port)
-            {
-                Log($"✔  Bootloader détecté sur {bootPort} (était {port}).", ACCENT2);
-                port = bootPort;   // upload sur le nouveau port
-            }
-            else
-            {
-                Log($"   Pas de nouveau port détecté, utilisation de {port}.", Color.LightGray);
+                Log($"✔  Port {port} libre.", Color.LightGray);
             }
         }
 
         // ─ Étape 2 : upload ─
         SetStatus("⬆  Upload en cours…", ACCENT);
         Log("─── Upload ───────────────────────────────", TEXTDIM);
-        ok = await RunCliAsync(cli, $"upload -p {port} --fqbn {fqbn} \"{sketch}\"");
+        ok = await RunCliAsync(cli, $"upload -p {port} --fqbn {fqbn} --verbose \"{sketch}\"");
 
         progress.Visible = false;
         btnFlash.Enabled = true;
