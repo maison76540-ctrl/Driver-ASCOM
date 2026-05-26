@@ -16,6 +16,7 @@ public sealed class SafetyMonitorDevice : IDisposable
     private bool _connected;
     private bool _isSafe;
     private string _lastRaw = "";
+    private string _lastError = "";
     private DateTime _lastPoll = DateTime.MinValue;
 
     public SafetyMonitorDevice(AppSettings settings)
@@ -39,6 +40,9 @@ public sealed class SafetyMonitorDevice : IDisposable
             return _lastRaw;
         }
     }
+
+    /// <summary>Retourne le dernier message d'erreur série (vide si aucune erreur).</summary>
+    public string GetLastError() { lock (_lock) return _lastError; }
 
     /// <summary>
     /// Retourne l'état de sécurité mis en cache.
@@ -114,8 +118,9 @@ public sealed class SafetyMonitorDevice : IDisposable
             bool raw = ParseResponse(response);
             _isSafe = _settings.InvertSensor ? !raw : raw;
         }
-        catch
+        catch (Exception ex)
         {
+            _lastError = $"[{DateTime.Now:HH:mm:ss}] {ex.GetType().Name}: {ex.Message}";
             _isSafe = false;
             ClosePort();
         }
@@ -151,7 +156,7 @@ public sealed class SafetyMonitorDevice : IDisposable
                 WriteTimeout = 2000
             };
             _port.Open();
-            Thread.Sleep(500);
+            Thread.Sleep(2000);   // Nano Every (USB natif) nécessite plus de temps que Nano classique
             _port.DiscardInBuffer();
         }
         catch (Exception ex)

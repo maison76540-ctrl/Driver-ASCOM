@@ -163,6 +163,7 @@ app.MapGet("/debug", (SafetyMonitorDevice dev, AppSettings s) =>
 {
     string raw = dev.GetRawResponse();
     bool isSafe = dev.IsSafe;
+    string lastErr = dev.GetLastError();
     return Results.Content(
         $"<html><body style='font-family:monospace;background:#111;color:#eee;padding:20px'>" +
         $"<h2>ArduSafeMon — Diagnostic</h2>" +
@@ -172,6 +173,8 @@ app.MapGet("/debug", (SafetyMonitorDevice dev, AppSettings s) =>
         $"<p>IsSafe calculé : <b style='color:{(isSafe ? "#40c888" : "#e94560")}'>{isSafe}</b></p>" +
         $"<p>InvertSensor : <b>{s.InvertSensor}</b></p>" +
         $"<p>SimulationMode : <b>{s.SimulationMode}</b></p>" +
+        $"<p>Dernière erreur série : <b style='color:{(string.IsNullOrEmpty(lastErr) ? "#40c888" : "#e94560")}'>" +
+        $"{(string.IsNullOrEmpty(lastErr) ? "aucune" : lastErr)}</b></p>" +
         $"<p><a href='/debug' style='color:#4da6ff'>Rafraîchir</a> &nbsp;|&nbsp; <a href='/setup' style='color:#4da6ff'>Configuration</a></p>" +
         $"</body></html>", "text/html; charset=utf-8");
 });
