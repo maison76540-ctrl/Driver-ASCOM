@@ -20,4 +20,11 @@ public class AppSettings
 
     /// <summary>Valeur retournée par IsSafe en mode simulation.</summary>
     public bool SimulatedSafe { get; set; } = true;
+
+    /// <summary>
+    /// Si true, inverse la logique du capteur :
+    /// "safe" Arduino → unsafe, "notsafe" Arduino → safe.
+    /// Utile si le câblage du capteur est en logique inverse.
+    /// </summary>
+    public bool InvertSensor { get; set; } = false;
 }

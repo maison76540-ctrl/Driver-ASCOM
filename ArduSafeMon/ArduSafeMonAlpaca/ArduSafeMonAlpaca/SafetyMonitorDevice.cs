@@ -95,7 +95,8 @@ public sealed class SafetyMonitorDevice : IDisposable
             _port!.DiscardInBuffer();
             _port.Write("S#");
             string response = _port.ReadTo("#");
-            _isSafe = ParseResponse(response);
+            bool raw = ParseResponse(response);
+            _isSafe = _settings.InvertSensor ? !raw : raw;
         }
         catch
         {

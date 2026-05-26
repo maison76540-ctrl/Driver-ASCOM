@@ -100,6 +100,13 @@ app.MapGet("/setup", (AppSettings s) =>
     sb.AppendLine("<label for='safe' style='margin:0'>Etat simule : Safe</label>");
     sb.AppendLine("</div>");
 
+    // Invert sensor
+    string invertChecked = s.InvertSensor ? " checked" : "";
+    sb.AppendLine("<div class='row'>");
+    sb.AppendLine($"<input type='checkbox' name='InvertSensor' id='inv'{invertChecked}>");
+    sb.AppendLine("<label for='inv' style='margin:0'>Inverser le capteur (si toit ferm&#233; = safe)</label>");
+    sb.AppendLine("</div>");
+
     sb.AppendLine("<button type='submit'>Enregistrer</button>");
     sb.AppendLine("</form></body></html>");
 
@@ -113,14 +120,16 @@ app.MapPost("/setup", async (HttpRequest req, AppSettings s) =>
     string comPort = form["ComPort"].FirstOrDefault() ?? s.ComPort;
     if (!int.TryParse(form["PollIntervalMs"].FirstOrDefault(), out int pollMs) || pollMs < 500)
         pollMs = s.PollIntervalMs;
-    bool simMode = form.ContainsKey("SimulationMode");
-    bool simSafe = form.ContainsKey("SimulatedSafe");
+    bool simMode    = form.ContainsKey("SimulationMode");
+    bool simSafe    = form.ContainsKey("SimulatedSafe");
+    bool invertSensor = form.ContainsKey("InvertSensor");
 
     // Mise à jour en mémoire
     s.ComPort        = comPort;
     s.PollIntervalMs = pollMs;
     s.SimulationMode = simMode;
     s.SimulatedSafe  = simSafe;
+    s.InvertSensor   = invertSensor;
 
     // Persistance dans %ProgramData%\ArduSafeMonAlpaca\appsettings.json
     try
@@ -133,6 +142,7 @@ app.MapPost("/setup", async (HttpRequest req, AppSettings s) =>
             PollIntervalMs = pollMs,
             SimulationMode = simMode,
             SimulatedSafe  = simSafe,
+            InvertSensor   = invertSensor,
             Logging        = new { LogLevel = new { Default = "Information" } }
         };
         await File.WriteAllTextAsync(appSettingsPath,
