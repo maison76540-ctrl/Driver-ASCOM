@@ -15,6 +15,7 @@ public sealed class SafetyMonitorDevice : IDisposable
     private SerialPort? _port;
     private bool _connected;
     private bool _isSafe;
+    private string _lastRaw = "";
     private DateTime _lastPoll = DateTime.MinValue;
 
     public SafetyMonitorDevice(AppSettings settings)
@@ -24,6 +25,20 @@ public sealed class SafetyMonitorDevice : IDisposable
 
     /// <summary>True si Connect() a réussi et Disconnect() n'a pas encore été appelé.</summary>
     public bool Connected { get { lock (_lock) return _connected; } }
+
+    /// <summary>Retourne la dernière réponse brute reçue de l'Arduino (diagnostic).</summary>
+    public string GetRawResponse()
+    {
+        lock (_lock)
+        {
+            if (!_connected || _settings.SimulationMode)
+                return _settings.SimulationMode ? "(simulation)" : "(non connecté)";
+            // Forcer un poll immédiat
+            _lastPoll = DateTime.MinValue;
+            RefreshSafe();
+            return _lastRaw;
+        }
+    }
 
     /// <summary>
     /// Retourne l'état de sécurité mis en cache.
@@ -95,6 +110,7 @@ public sealed class SafetyMonitorDevice : IDisposable
             _port!.DiscardInBuffer();
             _port.Write("S#");
             string response = _port.ReadTo("#");
+            _lastRaw = response.Trim();
             bool raw = ParseResponse(response);
             _isSafe = _settings.InvertSensor ? !raw : raw;
         }
