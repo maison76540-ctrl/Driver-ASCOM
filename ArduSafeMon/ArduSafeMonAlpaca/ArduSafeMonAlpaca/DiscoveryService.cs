@@ -35,6 +35,10 @@ public sealed class DiscoveryService : BackgroundService
                 "Alpaca discovery listening on UDP 32227 → HTTP port {port}",
                 _settings.AlpacaPort);
 
+            // Dédoublonnage : NINA envoie la requête depuis chaque interface réseau
+            // (LAN, virtuel, loopback) → on ne répond qu'une seule fois par rafale (500 ms).
+            DateTime lastReply = DateTime.MinValue;
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 UdpReceiveResult result;
@@ -53,6 +57,15 @@ public sealed class DiscoveryService : BackgroundService
                 string msg = Encoding.UTF8.GetString(result.Buffer);
                 if (!msg.StartsWith("alpacadiscovery1", StringComparison.OrdinalIgnoreCase))
                     continue;
+
+                // Ignorer les requêtes dupliquées dans une fenêtre de 500 ms
+                var now = DateTime.UtcNow;
+                if ((now - lastReply).TotalMilliseconds < 500)
+                {
+                    _logger.LogDebug("Discovery: duplicate request from {ep}, ignored", result.RemoteEndPoint);
+                    continue;
+                }
+                lastReply = now;
 
                 string json = JsonSerializer.Serialize(
                     new { AlpacaPort = _settings.AlpacaPort });
