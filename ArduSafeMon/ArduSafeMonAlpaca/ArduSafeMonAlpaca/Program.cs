@@ -241,8 +241,13 @@ app.MapPut($"{P}/connected", async (HttpRequest req, SafetyMonitorDevice dev) =>
 app.MapGet($"{P}/issafe", (SafetyMonitorDevice dev) =>
 {
     if (!dev.Connected)
+    {
+        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] /issafe → NOT CONNECTED");
         return Results.Json(AlpacaResult.Fail<bool>(0x0400, "Not connected"));
-    return Results.Json(AlpacaResult.Ok(dev.IsSafe));
+    }
+    bool safe = dev.IsSafe;
+    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] /issafe → {(safe ? "SAFE" : "UNSAFE")}");
+    return Results.Json(AlpacaResult.Ok(safe));
 });
 
 // ── Demarrage ────────────────────────────────────────────────────────────────
