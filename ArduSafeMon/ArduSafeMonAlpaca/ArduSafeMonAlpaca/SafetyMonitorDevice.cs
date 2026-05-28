@@ -109,7 +109,10 @@ public sealed class SafetyMonitorDevice : IDisposable
         try
         {
             if (_port == null || !_port.IsOpen)
+            {
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe: port fermé, réouverture...");
                 OpenPort();
+            }
 
             _port!.DiscardInBuffer();
             _port.Write("S#");
@@ -117,10 +120,12 @@ public sealed class SafetyMonitorDevice : IDisposable
             _lastRaw = response.Trim();
             bool raw = ParseResponse(response);
             _isSafe = _settings.InvertSensor ? !raw : raw;
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe: brut='{_lastRaw}' raw={raw} isSafe={_isSafe}");
         }
         catch (Exception ex)
         {
             _lastError = $"[{DateTime.Now:HH:mm:ss}] {ex.GetType().Name}: {ex.Message}";
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe ERREUR: {ex.GetType().Name}: {ex.Message}");
             _isSafe = false;
             ClosePort();
         }
