@@ -114,14 +114,35 @@ public sealed class SafetyMonitorDevice : IDisposable
                 OpenPort();
             }
 
-            // L'Arduino envoie son état toutes les 500 ms en continu (mode push).
-            // On lit simplement la prochaine valeur — timeout 2 s au cas où.
-            // Pas de DiscardInBuffer/Write pour éviter les problèmes de timing.
-            string response = _port!.ReadTo("#");
+            string response;
+
+            // Essai 1 — mode push (sketch v1.2+) : l'Arduino envoie toutes les 500 ms.
+            // Si rien n'arrive en 700 ms, on bascule sur le mode requête (sketch v1.0/v1.1).
+            _port!.ReadTimeout = 700;
+            try
+            {
+                response = _port.ReadTo("#");
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe [push]: brut='{response.Trim()}'");
+            }
+            catch (TimeoutException)
+            {
+                // Essai 2 — mode requête (ancien sketch) : envoie "S#" et attend la réponse.
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe: pas de push, bascule mode S#");
+                _port.ReadTimeout = 2000;
+                _port.DiscardInBuffer();
+                _port.Write("S#");
+                response = _port.ReadTo("#");
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe [S#]: brut='{response.Trim()}'");
+            }
+            finally
+            {
+                _port.ReadTimeout = 2000;
+            }
+
             _lastRaw = response.Trim();
             bool raw = ParseResponse(response);
             _isSafe = _settings.InvertSensor ? !raw : raw;
-            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] RefreshSafe: brut='{_lastRaw}' raw={raw} isSafe={_isSafe}");
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] isSafe={_isSafe}");
         }
         catch (Exception ex)
         {
