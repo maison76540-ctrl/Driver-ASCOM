@@ -114,9 +114,10 @@ public sealed class SafetyMonitorDevice : IDisposable
                 OpenPort();
             }
 
-            _port!.DiscardInBuffer();
-            _port.Write("S#");
-            string response = _port.ReadTo("#");
+            // L'Arduino envoie son état toutes les 500 ms en continu (mode push).
+            // On lit simplement la prochaine valeur — timeout 2 s au cas où.
+            // Pas de DiscardInBuffer/Write pour éviter les problèmes de timing.
+            string response = _port!.ReadTo("#");
             _lastRaw = response.Trim();
             bool raw = ParseResponse(response);
             _isSafe = _settings.InvertSensor ? !raw : raw;
@@ -161,7 +162,7 @@ public sealed class SafetyMonitorDevice : IDisposable
                 WriteTimeout = 2000
             };
             _port.Open();
-            Thread.Sleep(2000);   // Nano Every (USB natif) nécessite plus de temps que Nano classique
+            Thread.Sleep(500);
             _port.DiscardInBuffer();
         }
         catch (Exception ex)
