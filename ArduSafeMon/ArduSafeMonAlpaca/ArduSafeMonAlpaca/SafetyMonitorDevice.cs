@@ -180,10 +180,12 @@ public sealed class SafetyMonitorDevice : IDisposable
             _port = new SerialPort(_settings.ComPort, 9600)
             {
                 ReadTimeout  = 2000,
-                WriteTimeout = 2000
+                WriteTimeout = 2000,
+                DtrEnable    = true,   // Nano Every (USB CDC) : active la transmission
+                RtsEnable    = true
             };
             _port.Open();
-            Thread.Sleep(500);
+            Thread.Sleep(1500);        // laisser le temps à l'Arduino de démarrer et pousser
             _port.DiscardInBuffer();
         }
         catch (Exception ex)
